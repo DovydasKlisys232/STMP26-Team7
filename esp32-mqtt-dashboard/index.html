@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ESP32 MQTT Telemetria</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://unpkg.com/paho-mqtt@1.1.0/paho-mqtt-min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+              <path d="M4 13.5c4-4 12-4 16 0" />
+              <path d="M7.5 17c2.4-2.4 6.6-2.4 9 0" />
+              <path d="M11.9 20h.2" />
+              <path d="M12 4v4" />
+              <path d="M8 8h8" />
+            </svg>
+          </span>
+          <div>
+            <h1>ESP32 Telemetria</h1>
+            <p>Temperatura, accelerazione e posizione via MQTT</p>
+          </div>
+        </div>
+        <div class="status-pill" id="connectionStatus">
+          <span class="status-dot"></span>
+          Disconnesso
+        </div>
+      </header>
+
+      <section class="connection-panel" aria-label="Connessione MQTT">
+        <label>
+          Broker WebSocket
+          <input id="brokerUrl" value="wss://broker.emqx.io:8084/mqtt" spellcheck="false" />
+        </label>
+        <label>
+          Topic
+          <input id="topic" value="esp32/telemetry" spellcheck="false" />
+        </label>
+        <label>
+          Client ID
+          <input id="clientId" spellcheck="false" />
+        </label>
+        <div class="actions">
+          <button id="connectBtn" class="primary-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+              <path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1" />
+            </svg>
+            Connetti
+          </button>
+          <button id="simulateBtn" class="ghost-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5v14l11-7Z" />
+            </svg>
+            Simula
+          </button>
+        </div>
+      </section>
+
+      <section class="metrics-grid" aria-label="Dati live">
+        <article class="metric-card temperature-card">
+          <div class="card-head">
+            <span class="icon-box temp">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z" />
+              </svg>
+            </span>
+            <div>
+              <h2>Temperatura</h2>
+              <p>Ultima lettura</p>
+            </div>
+          </div>
+          <div class="temperature-readout">
+            <span id="temperatureValue">--</span>
+            <small>°C</small>
+          </div>
+          <div class="gauge" aria-hidden="true">
+            <div id="temperatureGauge"></div>
+          </div>
+          <p class="hint" id="temperatureHint">In attesa dati</p>
+        </article>
+
+        <article class="metric-card">
+          <div class="card-head">
+            <span class="icon-box accel">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v18" />
+                <path d="M3 12h18" />
+                <path d="m6 6 12 12" />
+                <path d="m18 6-12 12" />
+              </svg>
+            </span>
+            <div>
+              <h2>Accelerazione</h2>
+              <p>Assi X, Y, Z</p>
+            </div>
+          </div>
+          <div class="axis-list">
+            <div class="axis-row">
+              <span>X</span>
+              <div class="axis-track"><div id="barX"></div></div>
+              <strong id="accX">--</strong>
+            </div>
+            <div class="axis-row">
+              <span>Y</span>
+              <div class="axis-track"><div id="barY"></div></div>
+              <strong id="accY">--</strong>
+            </div>
+            <div class="axis-row">
+              <span>Z</span>
+              <div class="axis-track"><div id="barZ"></div></div>
+              <strong id="accZ">--</strong>
+            </div>
+          </div>
+          <p class="hint">Valori in g o m/s², in base al payload ESP32</p>
+        </article>
+
+        <article class="metric-card gps-card">
+          <div class="card-head">
+            <span class="icon-box gps">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            </span>
+            <div>
+              <h2>Coordinate GPS</h2>
+              <p>Latitudine e longitudine</p>
+            </div>
+          </div>
+          <dl class="coord-list">
+            <div>
+              <dt>Latitudine</dt>
+              <dd id="latitudeValue">--</dd>
+            </div>
+            <div>
+              <dt>Longitudine</dt>
+              <dd id="longitudeValue">--</dd>
+            </div>
+            <div>
+              <dt>Posizione</dt>
+              <dd id="positionAddress" class="address-value">--</dd>
+            </div>
+          </dl>
+          <a id="mapsLink" class="map-link" target="_blank" rel="noreferrer">Apri in mappa</a>
+        </article>
+
+        <article class="metric-card map-card">
+          <div class="map-surface">
+            <div class="map-grid"></div>
+            <div class="map-marker" id="mapMarker">
+              <span></span>
+            </div>
+          </div>
+          <div class="map-footer">
+            <div>
+              <strong id="mapLabel">Nessuna posizione</strong>
+              <small id="mapAddress">--</small>
+            </div>
+            <span id="lastUpdate">Mai aggiornato</span>
+          </div>
+        </article>
+      </section>
+
+      <section class="camera-section" aria-label="Camera OV2640">
+        <article class="metric-card camera-card">
+          <div class="camera-info">
+            <div class="card-head">
+              <span class="icon-box camera">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14.5 5 16 8h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3l1.5-3Z" />
+                  <circle cx="12" cy="13" r="3.5" />
+                </svg>
+              </span>
+              <div>
+                <h2>Camera OV2640</h2>
+                <p>Ultima foto ricevuta via MQTT</p>
+              </div>
+            </div>
+            <dl class="camera-stats">
+              <div>
+                <dt>Ultimo frame</dt>
+                <dd id="cameraTime">--</dd>
+              </div>
+              <div>
+                <dt>Formato</dt>
+                <dd id="cameraFormat">--</dd>
+              </div>
+            </dl>
+          </div>
+          <div class="camera-frame" id="cameraFrame">
+            <img id="cameraImage" alt="Ultima foto OV2640" />
+            <div class="camera-empty" id="cameraEmpty">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14.5 5 16 8h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3l1.5-3Z" />
+                <circle cx="12" cy="13" r="3.5" />
+              </svg>
+              <span>In attesa foto</span>
+            </div>
+          </div>
+        </article>
+        <div class="photo-history">
+          <div class="history-head">
+            <div>
+              <h2>Storico foto</h2>
+              <p id="photoCount">Nessuna foto salvata in memoria</p>
+            </div>
+            <button id="clearPhotosBtn" class="ghost-btn compact">Svuota storico</button>
+          </div>
+          <div class="photo-strip" id="photoStrip" aria-label="Foto salvate">
+            <div class="photo-empty">Le foto ricevute appariranno qui.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="payload-section">
+        <div class="section-title">
+          <div>
+            <h2>Payload recenti</h2>
+            <p>Ultimi messaggi ricevuti dal topic sottoscritto</p>
+          </div>
+          <button id="clearLogBtn" class="ghost-btn compact">Pulisci log</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ora</th>
+                <th>Topic</th>
+                <th>Temperatura</th>
+                <th>Acc.</th>
+                <th>GPS</th>
+                <th>Foto</th>
+                <th>Payload</th>
+              </tr>
+            </thead>
+            <tbody id="payloadTable">
+              <tr class="empty-row">
+                <td colspan="7">Nessun messaggio ricevuto.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
