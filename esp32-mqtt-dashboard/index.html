@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="it">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ESP32 MQTT Telemetria</title>
+    <title>ESP32 MQTT Telemetry</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://unpkg.com/paho-mqtt@1.1.0/paho-mqtt-min.js"></script>
   </head>
@@ -21,17 +21,18 @@
             </svg>
           </span>
           <div>
-            <h1>ESP32 Telemetria</h1>
-            <p>Temperatura, accelerazione e posizione via MQTT</p>
+            <h1>ESP32 Telemetry</h1>
+            <p>Temperature, acceleration and location via MQTT</p>
           </div>
         </div>
+        <div class="project-name" aria-label="Project name">AcquaVision</div>
         <div class="status-pill" id="connectionStatus">
           <span class="status-dot"></span>
-          Disconnesso
+          Disconnected
         </div>
       </header>
 
-      <section class="connection-panel" aria-label="Connessione MQTT">
+      <section class="connection-panel" aria-label="MQTT connection">
         <label>
           Broker WebSocket
           <input id="brokerUrl" value="wss://broker.emqx.io:8084/mqtt" spellcheck="false" />
@@ -50,18 +51,12 @@
               <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
               <path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1" />
             </svg>
-            Connetti
-          </button>
-          <button id="simulateBtn" class="ghost-btn">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8 5v14l11-7Z" />
-            </svg>
-            Simula
+            Connect
           </button>
         </div>
       </section>
 
-      <section class="metrics-grid" aria-label="Dati live">
+      <section class="metrics-grid" aria-label="Live data">
         <article class="metric-card temperature-card">
           <div class="card-head">
             <span class="icon-box temp">
@@ -70,8 +65,8 @@
               </svg>
             </span>
             <div>
-              <h2>Temperatura</h2>
-              <p>Ultima lettura</p>
+              <h2>Temperature</h2>
+              <p>Latest reading</p>
             </div>
           </div>
           <div class="temperature-readout">
@@ -81,7 +76,7 @@
           <div class="gauge" aria-hidden="true">
             <div id="temperatureGauge"></div>
           </div>
-          <p class="hint" id="temperatureHint">In attesa dati</p>
+          <p class="hint" id="temperatureHint">Waiting for data</p>
         </article>
 
         <article class="metric-card">
@@ -95,8 +90,8 @@
               </svg>
             </span>
             <div>
-              <h2>Accelerazione</h2>
-              <p>Assi X, Y, Z</p>
+              <h2>Acceleration</h2>
+              <p>X, Y, Z axes</p>
             </div>
           </div>
           <div class="axis-list">
@@ -116,7 +111,7 @@
               <strong id="accZ">--</strong>
             </div>
           </div>
-          <p class="hint">Valori in g o m/s², in base al payload ESP32</p>
+          <p class="hint">Values in g or m/s², depending on the ESP32 payload</p>
         </article>
 
         <article class="metric-card gps-card">
@@ -128,25 +123,25 @@
               </svg>
             </span>
             <div>
-              <h2>Coordinate GPS</h2>
-              <p>Latitudine e longitudine</p>
+              <h2>GPS Coordinates</h2>
+              <p>Latitude and longitude</p>
             </div>
           </div>
           <dl class="coord-list">
             <div>
-              <dt>Latitudine</dt>
+              <dt>Latitude</dt>
               <dd id="latitudeValue">--</dd>
             </div>
             <div>
-              <dt>Longitudine</dt>
+              <dt>Longitude</dt>
               <dd id="longitudeValue">--</dd>
             </div>
             <div>
-              <dt>Posizione</dt>
+              <dt>Location</dt>
               <dd id="positionAddress" class="address-value">--</dd>
             </div>
           </dl>
-          <a id="mapsLink" class="map-link" target="_blank" rel="noreferrer">Apri in mappa</a>
+          <a id="mapsLink" class="map-link" target="_blank" rel="noreferrer">Open in map</a>
         </article>
 
         <article class="metric-card map-card">
@@ -158,15 +153,15 @@
           </div>
           <div class="map-footer">
             <div>
-              <strong id="mapLabel">Nessuna posizione</strong>
+              <strong id="mapLabel">No location</strong>
               <small id="mapAddress">--</small>
             </div>
-            <span id="lastUpdate">Mai aggiornato</span>
+            <span id="lastUpdate">Never updated</span>
           </div>
         </article>
       </section>
 
-      <section class="camera-section" aria-label="Camera OV2640">
+      <section class="camera-section" aria-label="OV2640 camera">
         <article class="metric-card camera-card">
           <div class="camera-info">
             <div class="card-head">
@@ -178,41 +173,41 @@
               </span>
               <div>
                 <h2>Camera OV2640</h2>
-                <p>Ultima foto ricevuta via MQTT</p>
+                <p>Latest photo received via MQTT</p>
               </div>
             </div>
             <dl class="camera-stats">
               <div>
-                <dt>Ultimo frame</dt>
+                <dt>Latest frame</dt>
                 <dd id="cameraTime">--</dd>
               </div>
               <div>
-                <dt>Formato</dt>
+                <dt>Format</dt>
                 <dd id="cameraFormat">--</dd>
               </div>
             </dl>
           </div>
           <div class="camera-frame" id="cameraFrame">
-            <img id="cameraImage" alt="Ultima foto OV2640" />
+            <img id="cameraImage" alt="Latest OV2640 photo" />
             <div class="camera-empty" id="cameraEmpty">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M14.5 5 16 8h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3l1.5-3Z" />
                 <circle cx="12" cy="13" r="3.5" />
               </svg>
-              <span>In attesa foto</span>
+              <span>Waiting for photo</span>
             </div>
           </div>
         </article>
         <div class="photo-history">
           <div class="history-head">
             <div>
-              <h2>Storico foto</h2>
-              <p id="photoCount">Nessuna foto salvata in memoria</p>
+              <h2>Photo history</h2>
+              <p id="photoCount">No photos saved in memory</p>
             </div>
-            <button id="clearPhotosBtn" class="ghost-btn compact">Svuota storico</button>
+            <button id="clearPhotosBtn" class="ghost-btn compact">Clear history</button>
           </div>
-          <div class="photo-strip" id="photoStrip" aria-label="Foto salvate">
-            <div class="photo-empty">Le foto ricevute appariranno qui.</div>
+          <div class="photo-strip" id="photoStrip" aria-label="Saved photos">
+            <div class="photo-empty">Received photos will appear here.</div>
           </div>
         </div>
       </section>
@@ -220,27 +215,27 @@
       <section class="payload-section">
         <div class="section-title">
           <div>
-            <h2>Payload recenti</h2>
-            <p>Ultimi messaggi ricevuti dal topic sottoscritto</p>
+            <h2>Recent payloads</h2>
+            <p>Latest messages received from the subscribed topic</p>
           </div>
-          <button id="clearLogBtn" class="ghost-btn compact">Pulisci log</button>
+          <button id="clearLogBtn" class="ghost-btn compact">Clear log</button>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Ora</th>
+                <th>Time</th>
                 <th>Topic</th>
-                <th>Temperatura</th>
+                <th>Temperature</th>
                 <th>Acc.</th>
                 <th>GPS</th>
-                <th>Foto</th>
+                <th>Photo</th>
                 <th>Payload</th>
               </tr>
             </thead>
             <tbody id="payloadTable">
               <tr class="empty-row">
-                <td colspan="7">Nessun messaggio ricevuto.</td>
+                <td colspan="7">No messages received.</td>
               </tr>
             </tbody>
           </table>

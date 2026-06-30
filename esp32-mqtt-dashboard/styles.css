@@ -73,6 +73,22 @@ svg {
   padding: 18px 20px;
 }
 
+.project-name {
+  position: absolute;
+  left: 50%;
+  max-width: min(360px, 34vw);
+  transform: translateX(-50%);
+  color: var(--accent-strong);
+  font-family: "Avenir Next", Avenir, "Trebuchet MS", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(24px, 2.2vw, 34px);
+  font-weight: 900;
+  line-height: 1;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -804,8 +820,21 @@ td code {
     flex-direction: column;
   }
 
+  .project-name {
+    position: static;
+    max-width: 100%;
+    transform: none;
+    font-size: 28px;
+    order: 2;
+  }
+
   .brand {
     width: 100%;
+    order: 1;
+  }
+
+  .status-pill {
+    order: 3;
   }
 
   .brand p {

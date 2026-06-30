@@ -1,20 +1,20 @@
-# ESP32 MQTT Telemetria
+# ESP32 MQTT Telemetry
 
-App web statica per leggere da MQTT i dati di temperatura, accelerazione, latitudine e longitudine.
+Static web app for reading temperature, acceleration, latitude and longitude data from MQTT.
 
-## Avvio
+## Start
 
-Apri `index.html` nel browser. Non serve installare dipendenze.
+Open `index.html` in the browser. No dependencies need to be installed.
 
-Il browser non può collegarsi a MQTT TCP puro sulla porta `1883`: serve un broker con MQTT over WebSocket, per esempio:
+The browser cannot connect to plain MQTT TCP on port `1883`: you need a broker with MQTT over WebSocket, for example:
 
 - `wss://broker.emqx.io:8084/mqtt`
-- Mosquitto configurato con listener WebSocket
-- HiveMQ, EMQX o broker locale con porta WebSocket abilitata
+- Mosquitto configured with a WebSocket listener
+- HiveMQ, EMQX or a local broker with a WebSocket port enabled
 
-## Payload atteso
+## Expected Payload
 
-Pubblica sul topic configurato un JSON simile:
+Publish a JSON payload like this on the configured topic:
 
 ```json
 {
@@ -26,37 +26,37 @@ Pubblica sul topic configurato un JSON simile:
   },
   "latitude": 53.349805,
   "longitude": -6.26031,
-  "city": "Dublino",
+  "city": "Dublin",
   "street": "Dame Street",
   "photo": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ..."
 }
 ```
 
-Sono accettati anche alias comuni:
+Common aliases are also accepted:
 
-- temperatura: `temperature`, `temp`, `t`
-- accelerazione: `acceleration.x/y/z`, `acc.x/y/z`, `accX`, `accY`, `accZ`, `ax`, `ay`, `az`
-- coordinate: `latitude`, `lat`, `longitude`, `lng`, `lon`
-- posizione testuale: `address`, `place`, `locationName`, oppure `street`/`road`/`via` + `city`/`town`/`village`
-- foto OV2640: `photo`, `image`, `frame`, `jpeg`, `jpg`, oppure `camera.image`
+- temperature: `temperature`, `temp`, `t`
+- acceleration: `acceleration.x/y/z`, `acc.x/y/z`, `accX`, `accY`, `accZ`, `ax`, `ay`, `az`
+- coordinates: `latitude`, `lat`, `longitude`, `lng`, `lon`
+- text location: `address`, `place`, `locationName`, or `street`/`road`/`via` + `city`/`town`/`village`
+- OV2640 photo: `photo`, `image`, `frame`, `jpeg`, `jpg`, or `camera.image`
 
-Se il payload contiene solo latitudine e longitudine, l'app prova a ricavare città e via con reverse geocoding OpenStreetMap/Nominatim. Se il servizio non è raggiungibile, restano visibili le coordinate.
+If the payload only contains latitude and longitude, the app tries to resolve the city and street with OpenStreetMap/Nominatim reverse geocoding. If the service is unavailable, the coordinates remain visible.
 
-La foto può essere:
+The photo can be:
 
-- una data URL completa: `data:image/jpeg;base64,...`
-- un JPEG base64 puro che inizia con `/9j/`
-- un URL `http://...` / `https://...` verso l'immagine
+- a full data URL: `data:image/jpeg;base64,...`
+- a raw base64 JPEG starting with `/9j/`
+- an `http://...` / `https://...` URL pointing to the image
 
-Quando arriva una nuova foto sostituisce quella precedente. Se arrivano solo dati sensore, l'ultima foto resta a schermo.
+When a new photo arrives, it replaces the previous one. If only sensor data arrives, the latest photo stays on screen.
 
-Ogni nuova foto viene anche aggiunta allo **Storico foto** in memoria della pagina, con una miniatura e l'ora di ricezione. Lo storico mantiene gli ultimi 24 scatti e si svuota se chiudi o ricarichi la pagina, oppure premendo **Svuota storico**.
+Each new photo is also added to the in-page **Photo history**, with a thumbnail and reception time. The history keeps the latest 24 shots and is cleared if you close or reload the page, or by pressing **Clear history**.
 
-## Esempio ESP32
+## ESP32 Example
 
 ```cpp
 client.publish("esp32/telemetry",
   "{\"temperature\":24.7,\"acceleration\":{\"x\":0.01,\"y\":-0.03,\"z\":0.98},\"latitude\":53.349805,\"longitude\":-6.26031}");
 ```
 
-Per le immagini via MQTT conviene usare risoluzione e qualità JPEG moderate, perché il payload base64 è più grande del binario originale.
+For images over MQTT, use moderate JPEG resolution and quality because the base64 payload is larger than the original binary.

@@ -3,7 +3,6 @@ const els = {
   topic: document.querySelector("#topic"),
   clientId: document.querySelector("#clientId"),
   connectBtn: document.querySelector("#connectBtn"),
-  simulateBtn: document.querySelector("#simulateBtn"),
   clearLogBtn: document.querySelector("#clearLogBtn"),
   clearPhotosBtn: document.querySelector("#clearPhotosBtn"),
   connectionStatus: document.querySelector("#connectionStatus"),
@@ -34,7 +33,6 @@ const els = {
 };
 
 let mqttClient = null;
-let simulationTimer = null;
 let messages = [];
 let photoHistory = [];
 let selectedPhotoId = null;
@@ -85,85 +83,41 @@ function connectMqtt() {
   if (mqttClient?.isConnected()) {
     mqttClient.disconnect();
     mqttClient = null;
-    els.connectBtn.lastChild.textContent = " Connetti";
-    setStatus("Disconnesso");
+    els.connectBtn.lastChild.textContent = " Connect";
+    setStatus("Disconnected");
     return;
   }
-
-  stopSimulation();
 
   try {
     const { host, port, path, ssl } = parseBrokerUrl(els.brokerUrl.value);
     mqttClient = new Paho.MQTT.Client(host, port, path, els.clientId.value.trim());
 
     mqttClient.onConnectionLost = (response) => {
-      const message = response.errorMessage ? `Connessione persa: ${response.errorMessage}` : "Disconnesso";
+      const message = response.errorMessage ? `Connection lost: ${response.errorMessage}` : "Disconnected";
       setStatus(message, response.errorMessage ? "error" : "");
-      els.connectBtn.lastChild.textContent = " Connetti";
+      els.connectBtn.lastChild.textContent = " Connect";
     };
 
     mqttClient.onMessageArrived = (message) => {
       handlePayload(message.payloadString, message.destinationName);
     };
 
-    setStatus("Connessione...");
+    setStatus("Connecting...");
     mqttClient.connect({
       useSSL: ssl,
       timeout: 8,
       onSuccess: () => {
         mqttClient.subscribe(els.topic.value.trim());
-        setStatus("Connesso", "connected");
-        els.connectBtn.lastChild.textContent = " Disconnetti";
+        setStatus("Connected", "connected");
+        els.connectBtn.lastChild.textContent = " Disconnect";
       },
       onFailure: (error) => {
-        setStatus(`Errore: ${error.errorMessage || "connessione fallita"}`, "error");
+        setStatus(`Error: ${error.errorMessage || "connection failed"}`, "error");
       },
     });
   } catch (error) {
-    setStatus(`URL broker non valido`, "error");
+    setStatus(`Invalid broker URL`, "error");
   }
-}
-
-function stopSimulation() {
-  if (simulationTimer) {
-    clearInterval(simulationTimer);
-    simulationTimer = null;
-  }
-  els.simulateBtn.lastChild.textContent = " Simula";
-}
-
-function toggleSimulation() {
-  if (simulationTimer) {
-    stopSimulation();
-    setStatus("Simulazione fermata");
-    return;
-  }
-
-  if (mqttClient?.isConnected()) {
-    mqttClient.disconnect();
-    mqttClient = null;
-    els.connectBtn.lastChild.textContent = " Connetti";
-  }
-
-  setStatus("Simulazione", "connected");
-  els.simulateBtn.lastChild.textContent = " Stop";
-  simulationTimer = setInterval(() => {
-    const now = Date.now() / 1000;
-    const payload = {
-      temperature: 23 + Math.sin(now / 7) * 4 + Math.random() * 0.8,
-      acceleration: {
-        x: Math.sin(now) * 1.2,
-        y: Math.cos(now / 1.8) * 0.9,
-        z: 0.95 + Math.sin(now / 4) * 0.18,
-      },
-      latitude: 53.3498 + Math.sin(now / 20) * 0.004,
-      longitude: -6.2603 + Math.cos(now / 20) * 0.004,
-      city: "Dublino",
-      street: "Dame Street",
-      photo: demoFrame(now),
-    };
-    handlePayload(JSON.stringify(payload), "simulazione/esp32");
-  }, 1200);
 }
 
 function handlePayload(rawPayload, topic) {
@@ -227,7 +181,7 @@ function updateMetrics(data, receivedAt) {
     els.mapsLink.href = `https://www.openstreetmap.org/?mlat=${data.latitude}&mlon=${data.longitude}#map=16/${data.latitude}/${data.longitude}`;
     els.mapsLink.classList.add("ready");
     moveMarker(data.latitude, data.longitude);
-    updateAddress(data.address || "Ricerca posizione...", data.address ? "" : "loading");
+    updateAddress(data.address || "Searching location...", data.address ? "" : "loading");
     if (!data.address) scheduleReverseGeocode(data.latitude, data.longitude);
   }
 
@@ -237,7 +191,7 @@ function updateMetrics(data, receivedAt) {
     renderPhotoHistory();
   }
 
-  els.lastUpdate.textContent = receivedAt.toLocaleTimeString("it-IT");
+  els.lastUpdate.textContent = receivedAt.toLocaleTimeString("en-GB");
 }
 
 function updateAddress(text, mode = "") {
@@ -287,9 +241,9 @@ async function reverseGeocode(latitude, longitude, key) {
 
     const result = await response.json();
     const label = formatReverseAddress(result.address, result.display_name);
-    updateAddress(label || "Posizione non trovata", label ? "" : "muted");
+    updateAddress(label || "Location not found", label ? "" : "muted");
   } catch {
-    updateAddress("Posizione non disponibile", "muted");
+    updateAddress("Location unavailable", "muted");
   }
 }
 
@@ -323,18 +277,18 @@ function showPhoto(photo) {
   els.cameraImage.src = photo.src;
   els.cameraImage.classList.add("ready");
   els.cameraEmpty.hidden = true;
-  els.cameraTime.textContent = photo.receivedAt.toLocaleTimeString("it-IT");
+  els.cameraTime.textContent = photo.receivedAt.toLocaleTimeString("en-GB");
   els.cameraFormat.textContent = photo.format;
 }
 
 function renderPhotoHistory() {
   const count = photoHistory.length;
   els.photoCount.textContent = count === 0
-    ? "Nessuna foto salvata in memoria"
-    : `${count} ${count === 1 ? "foto salvata" : "foto salvate"} in memoria`;
+    ? "No photos saved in memory"
+    : `${count} ${count === 1 ? "photo saved" : "photos saved"} in memory`;
 
   if (!count) {
-    els.photoStrip.innerHTML = `<div class="photo-empty">Le foto ricevute appariranno qui.</div>`;
+    els.photoStrip.innerHTML = `<div class="photo-empty">Received photos will appear here.</div>`;
     return;
   }
 
@@ -346,10 +300,10 @@ function renderPhotoHistory() {
 
     const img = document.createElement("img");
     img.src = photo.src;
-    img.alt = `Foto OV2640 ricevuta alle ${photo.receivedAt.toLocaleTimeString("it-IT")}`;
+    img.alt = `OV2640 photo received at ${photo.receivedAt.toLocaleTimeString("en-GB")}`;
 
     const time = document.createElement("span");
-    time.textContent = photo.receivedAt.toLocaleTimeString("it-IT");
+    time.textContent = photo.receivedAt.toLocaleTimeString("en-GB");
 
     button.append(img, time);
     return button;
@@ -408,7 +362,7 @@ function looksLikeBase64Jpeg(value) {
 
 function compactPayload(rawPayload) {
   if (looksLikeBase64Jpeg(rawPayload.trim())) {
-    return "[immagine JPEG base64]";
+    return "[base64 JPEG image]";
   }
 
   try {
@@ -427,7 +381,7 @@ function compactImageFields(value) {
   for (const key of Object.keys(value)) {
     const normalized = key.toLowerCase();
     if (["photo", "image", "frame", "jpeg", "jpg"].includes(normalized) && typeof value[key] === "string") {
-      value[key] = `[immagine ${Math.round(value[key].length / 1024)} KB]`;
+      value[key] = `[image ${Math.round(value[key].length / 1024)} KB]`;
     } else {
       compactImageFields(value[key]);
     }
@@ -435,9 +389,9 @@ function compactImageFields(value) {
 }
 
 function temperatureHint(value) {
-  if (value < 5) return "Temperatura bassa";
-  if (value > 35) return "Temperatura alta";
-  return "Valore nel range operativo";
+  if (value < 5) return "Low temperature";
+  if (value > 35) return "High temperature";
+  return "Value within operating range";
 }
 
 function updateAxis(label, bar, value) {
@@ -459,7 +413,7 @@ function moveMarker(latitude, longitude) {
 
 function renderLog() {
   if (!messages.length) {
-    els.payloadTable.innerHTML = `<tr class="empty-row"><td colspan="7">Nessun messaggio ricevuto.</td></tr>`;
+    els.payloadTable.innerHTML = `<tr class="empty-row"><td colspan="7">No messages received.</td></tr>`;
     return;
   }
 
@@ -476,7 +430,7 @@ function renderLog() {
 
     return `
       <tr>
-        <td>${message.receivedAt.toLocaleTimeString("it-IT")}</td>
+        <td>${message.receivedAt.toLocaleTimeString("en-GB")}</td>
         <td>${escapeHtml(message.topic)}</td>
         <td>${temp}</td>
         <td>${acc}</td>
@@ -488,29 +442,6 @@ function renderLog() {
   }).join("");
 }
 
-function demoFrame(now) {
-  const hue = Math.round((Math.sin(now / 5) + 1) * 70 + 150);
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
-      <defs>
-        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-          <stop stop-color="hsl(${hue}, 42%, 22%)"/>
-          <stop offset="1" stop-color="hsl(${hue + 38}, 50%, 52%)"/>
-        </linearGradient>
-      </defs>
-      <rect width="640" height="400" fill="url(#g)"/>
-      <g fill="none" stroke="rgba(255,255,255,.24)" stroke-width="2">
-        <path d="M0 280 C130 220 230 330 360 250 S560 170 640 220"/>
-        <path d="M0 315 C150 250 260 360 410 280 S590 215 640 250"/>
-      </g>
-      <circle cx="${320 + Math.sin(now / 2) * 90}" cy="${185 + Math.cos(now / 3) * 42}" r="52" fill="rgba(255,255,255,.22)"/>
-      <text x="32" y="54" fill="white" font-family="Arial, sans-serif" font-size="28" font-weight="700">OV2640 frame</text>
-      <text x="32" y="92" fill="rgba(255,255,255,.78)" font-family="Arial, sans-serif" font-size="18">${new Date().toLocaleTimeString("it-IT")}</text>
-    </svg>
-  `;
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
-}
-
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -520,7 +451,6 @@ function escapeHtml(value) {
 }
 
 els.connectBtn.addEventListener("click", connectMqtt);
-els.simulateBtn.addEventListener("click", toggleSimulation);
 els.clearLogBtn.addEventListener("click", () => {
   messages = [];
   renderLog();
@@ -545,7 +475,3 @@ els.photoStrip.addEventListener("click", (event) => {
   showPhoto(photo);
   renderPhotoHistory();
 });
-
-if (new URLSearchParams(window.location.search).get("demo") === "1") {
-  toggleSimulation();
-}
