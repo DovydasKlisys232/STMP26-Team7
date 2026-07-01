@@ -13,9 +13,9 @@ const char *ssid = "DK_wifi";
 const char *password = "ghtx4445";
 
 // --- MQTT Broker Configuration ---
-const char* mqtt_broker   = "broker.emqx.io"; 
-const char* mqtt_topic    = "esp32/telemetry";
-const int   mqtt_port     = 1883; 
+const char* mqtt_broker = "test.mosquitto.org";
+const int mqtt_port = 1883;
+const char* mqtt_topic = "esp32/telemetry";
 
 // --- Hardware Interface Drivers ---
 WiFiClient espClient;
@@ -168,15 +168,19 @@ void connectToMQTT() {
 
 void publishTelemetry()
 {
+
+  StaticJsonDocument<256> doc;
+  doc["temperature"]= 22.4;
+  char jsonBuffer[256];
+  serializeJson(doc, jsonBuffer);
+
     bool success =
-        mqttClient.publish(
-            mqtt_topic,
-            "{\"temperature\":22.4}"
-        );
+        mqttClient.publish(mqtt_topic, jsonBuffer);
 
     if(success)
     {
         Serial.println("Publish SUCCESS");
+        Serial.println(jsonBuffer);
     }
     else
     {
