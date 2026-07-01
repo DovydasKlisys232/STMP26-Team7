@@ -148,12 +148,13 @@ void publishTelemetry() {
   StaticJsonDocument<256> doc;
   
   // Fill payload fields with the values extracted straight out of the GNSS receiver
-  doc["lat"]  = currentLat;
-  doc["lon"]  = currentLon;
-  doc["alt"]  = currentAlt;
-  doc["sats"] = trackedSats;
-  doc["spd"]  = boatSpeed;
-  doc["pres"] = airPressure; // Transmits current pressure state metric
+  doc["latitude"]    = currentLat; 
+  doc["longitude"]   = currentLon; 
+  doc["altitude"]    = currentAlt;
+  doc["satellites"]  = trackedSats;
+  doc["speed"]       = boatSpeed;
+  doc["pressure"]    = airPressure; 
+  doc["distance"]    = totalDistance;
 
   char jsonBuffer[256];
   serializeJson(doc, jsonBuffer);
