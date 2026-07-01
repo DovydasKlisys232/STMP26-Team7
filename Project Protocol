@@ -33,3 +33,12 @@ To ensure a smooth workflow, the core development responsibilities have been spl
         Task: Continuously reading and decoding satellite data from the Waveshare LC29H GNSS receiver via TinyGPS++.
               Packaging the live latitude, longitude, speed, and calculated total distance tracking (odometer feature) into a standardized JSON text string,
               and pushing it live over a Wi-Fi hotspot to the central MQTT broker (broker.hivemq.com).
+
+### ⚠️ Encountered Problems & Solutions ###
+
+Problem 1: MQTT Port Mismatch Between ESP32 and Web Dashboard
+* **Description:** GPS data sent by the ESP32 did not appear on the web dashboard.
+* **Root Cause:** Incompatible connection protocols:
+  1. The **ESP32** sends raw TCP data on standard MQTT port **1883**.
+  2. The **Web Dashboard** runs in a browser and is restricted to **WebSockets** for network security.
+* **Resolution:** Kept the ESP32 on port **1883** (TCP) and reconfigured the Web Dashboard to use port **8084** (HiveMQ WebSocket port). The broker automatically bridges the data internally.
