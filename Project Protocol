@@ -3,6 +3,11 @@ Project: AquaVision Smart Boat Photo Logger (SENSATE-X 2.0 | TU Dublin)
 Project Context: This project is developed as part of the BIP26 SENSATE-X 2.0 Short Term Mobility Programme at TU Dublin.
 The goal is to build an intelligent, energy-efficient autonomous water surface vehicle (boat) designed for environmental monitoring and coastal tracking.
 
+The boat dynamically tracks its live coordinates, computes its total traveled distance,
+and pushes this critical telemetry data instantly over the air via a mobile Wi-Fi hotspot.
+A central MQTT broker handles the transmission, enabling a live web dashboard to display the boat's movement on an interactive map in real-time,
+completely eliminating the need for manual card extractions.
+
 1. Team Role Distribution
 
 To ensure a smooth workflow, the core development responsibilities have been split as follows:
