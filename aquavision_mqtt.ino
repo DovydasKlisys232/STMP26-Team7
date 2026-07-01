@@ -85,7 +85,7 @@ void loop() {
       boatSpeed   = gps.speed.knots();        // Active calculated speed over ground
 
 
-      /*
+      
       if (lastLat != 0.0 && lastLon != 0.0) {
         // distance between last position and new position 
         double meterDriven = TinyGPSPlus::distanceBetween(currentLat, currentLon, lastLat, lastLon);
@@ -98,7 +98,7 @@ void loop() {
 
       // saves current position to old position, so the new distance can be added to the old one
       lastLat = currentLat;
-      lastLon = currentLon */
+      lastLon = currentLon 
       
       Serial.println("[GNSS Sync Alert] Real-time coordinates successfully updated from satellite fix.");
     } else {
