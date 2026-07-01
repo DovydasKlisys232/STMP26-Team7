@@ -1,0 +1,30 @@
+Project: AquaVision Smart Boat Photo Logger (SENSATE-X 2.0 | TU Dublin)
+
+Project Context: This project is developed as part of the BIP26 SENSATE-X 2.0 Short Term Mobility Programme at TU Dublin.
+The goal is to build an intelligent, energy-efficient autonomous water surface vehicle (boat) designed for environmental monitoring and coastal tracking.
+
+1. Team Role Distribution
+
+To ensure a smooth workflow, the core development responsibilities have been split as follows:
+
+    Role 1: Camera & Image Capture (OV2640)
+
+        Responsible: Dovydas (Ireland)
+
+        Task: Managing the ESP32-CAM module to capture high-resolution photos based on visual events,
+              sensor anomalies, or periodic time intervals.
+
+    Role 2: Web Dashboard & Frontend Map Visualization
+
+        Responsible: Mattya & Alessio (Italy)
+
+        Task: Maintaining the web server backend and frontend dashboard to display the live boat route,
+              decode incoming JSON payloads, and apply reverse geocoding to display readable place names alongside captured images.
+
+    Role 3: Main System Code, GNSS Parsing & MQTT Telemetry Pipeline
+
+        Responsible: Lucia (Spain), Fabian & Nhi (Germany)
+
+        Task: Continuously reading and decoding satellite data from the Waveshare LC29H GNSS receiver via TinyGPS++.
+              Packaging the live latitude, longitude, speed, and calculated total distance tracking (odometer feature) into a standardized JSON text string,
+              and pushing it live over a Wi-Fi hotspot to the central MQTT broker (broker.hivemq.com).
