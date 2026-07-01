@@ -41,4 +41,16 @@ Problem 1: MQTT Port Mismatch Between ESP32 and Web Dashboard
 * **Root Cause:** Incompatible connection protocols:
   1. The **ESP32** sends raw TCP data on standard MQTT port **1883**.
   2. The **Web Dashboard** runs in a browser and is restricted to **WebSockets** for network security.
-* **Resolution:** Kept the ESP32 on port **1883** (TCP) and reconfigured the Web Dashboard to use port **8084** (HiveMQ WebSocket port). The broker automatically bridges the data internally.
+* **Resolution:** Kept the ESP32 on port **1883** (TCP) and reconfigured the Web Dashboard to use port **8084** (HiveMQ WebSocket port).
+The broker automatically bridges the data internally.
+#### Problem 2: Browser Security Blocking Online MQTT Libraries (CORS / Local File Restriction)
+* **Description:** Even after aligning the WebSocket port, the web interface displayed a critical error message:
+`"Libreria MQTT non caricata"` (MQTT library not loaded) and refused to initialize the connection button.
+* **Root Cause:** The dashboard `index.html` file was being executed locally via
+the `file:///` protocol. Modern web browsers deploy security models that prevent local files from pulling external 
+scripts from web servers via public Content Delivery Networks (CDNs). The browser classified loading the online
+Paho MQTT JavaScript file as a cross-origin security threat and dropped the package.
+* **Resolution:** The team decoupled the external cloud dependency. We downloaded the production source script `mqttws31.min.js` directly 
+onto our hard drives, bundled it inside the root development directory next to our `index.html`, and updated the HTML injection paths to relative tracking:
+  ```html
+  <script src="mqttws31.min.js"></script>
