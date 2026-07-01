@@ -30,6 +30,10 @@ double currentAlt  = 0.0;
 int    trackedSats = 0;        
 float  boatSpeed   = 0.0;       
 float  airPressure = 1013.25; // Placeholder value (Requires an external I2C sensor like BMP280)
+// variables saving distance traveled
+double totalDistance = 0.0;   
+double lastLat = 0.0;         
+double lastLon = 0.0;
 
 unsigned long lastPublishTime = 0;
 const unsigned long publishInterval = 5000; // MODIFIED: Exactly 5 seconds execution interval
@@ -79,6 +83,22 @@ void loop() {
       currentAlt  = gps.altitude.meters();    // Real live Altitude
       trackedSats = gps.satellites.value();   // Active number of tracked satellites
       boatSpeed   = gps.speed.knots();        // Active calculated speed over ground
+
+
+      /*
+      if (lastLat != 0.0 && lastLon != 0.0) {
+        // distance between last position and new position 
+        double meterDriven = TinyGPSPlus::distanceBetween(currentLat, currentLon, lastLat, lastLon);
+        
+        // only if the boat moves more than 2 meters then it counts
+        if (meterDriven > 2.0) { 
+          totalDistance += meterDriven; // Adding Distance to totalDistance
+        }
+      } 
+
+      // saves current position to old position, so the new distance can be added to the old one
+      lastLat = currentLat;
+      lastLon = currentLon */
       
       Serial.println("[GNSS Sync Alert] Real-time coordinates successfully updated from satellite fix.");
     } else {
