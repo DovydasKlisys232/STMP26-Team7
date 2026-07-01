@@ -43,7 +43,8 @@ Problem 1: MQTT Port Mismatch Between ESP32 and Web Dashboard
   2. The **Web Dashboard** runs in a browser and is restricted to **WebSockets** for network security.
 * **Resolution:** Kept the ESP32 on port **1883** (TCP) and reconfigured the Web Dashboard to use port **8084** (HiveMQ WebSocket port).
 The broker automatically bridges the data internally.
-#### Problem 2: Browser Security Blocking Online MQTT Libraries (CORS / Local File Restriction)
+
+Problem 2: Browser Security Blocking Online MQTT Libraries (CORS / Local File Restriction)
 * **Description:** Even after aligning the WebSocket port, the web interface displayed a critical error message:
 `"Libreria MQTT non caricata"` (MQTT library not loaded) and refused to initialize the connection button.
 * **Root Cause:** The dashboard `index.html` file was being executed locally via
