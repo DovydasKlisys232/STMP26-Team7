@@ -197,10 +197,284 @@ void loop()
 
     if (gps.location.isValid())
     {
-        currentLat =
-            gps.location.lat();
+        currentLat = gps.location.lat();
+        currentLon = gps.location.lng();
 
-        currentLon =
-            gps.location.lng();
+        if (gps.altitude.isValid())
+        {
+            currentAlt = gps.altitude.meters();
+        }
+
+        if (gps.satellites.isValid())
+        {
+            trackedSats = gps.satellites.value();
+        }
+
+        if (gps.speed.isValid())
+        {
+            boatSpeed = gps.speed.knots();
+        }
+
+        if (lastLat != 0.0 && lastLon != 0.0)
+        {
+            double moved =
+                TinyGPSPlus::distanceBetween(
+                    currentLat,
+                    currentLon,
+                    lastLat,
+                    lastLon
+                );
+
+            if (moved > 2.0)
+            {
+                totalDistance += moved;
+            }
+        }
+
+        lastLat = currentLat;
+        lastLon = currentLon;
     }
+}
+
+// =========================
+// WIFI CONNECTION
+// =========================
+
+void connectToWiFi()
+{
+    Serial.print("Connecting to WiFi: ");
+    Serial.println(ssid);
+
+    WiFi.begin(ssid, password);
+
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println();
+    Serial.println("WiFi Connected");
+
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+}
+
+// =========================
+// HOME PAGE
+// =========================
+
+void handleRoot()
+{
+    String html;
+
+    html += "<html><body>";
+    html += "<h1>AquaVision GNSS + Camera Test</h1>";
+
+    html += "<h2>GNSS Data</h2>";
+
+    html += "<p><b>Latitude:</b> ";
+    html += String(currentLat, 6);
+    html += "</p>";
+
+    html += "<p><b>Longitude:</b> ";
+    html += String(currentLon, 6);
+    html += "</p>";
+
+    html += "<p><b>Altitude:</b> ";
+    html += String(currentAlt, 2);
+    html += " m</p>";
+
+    html += "<p><b>Satellites:</b> ";
+    html += String(trackedSats);
+    html += "</p>";
+
+    html += "<p><b>Speed:</b> ";
+    html += String(boatSpeed, 2);
+    html += " knots</p>";
+
+    html += "<p><b>Speed:</b> ";
+    html += String(boatSpeed * 1.852, 2);
+    html += " km/h</p>";
+
+    html += "<p><b>Total Distance:</b> ";
+    html += String(totalDistance, 2);
+    html += " m</p>";
+
+    if (gps.hdop.isValid())
+    {
+        html += "<p><b>HDOP:</b> ";
+        html += String(gps.hdop.value());
+        html += "</p>";
+    }
+
+    if (gps.date.isValid())
+    {
+        html += "<p><b>Date:</b> ";
+        html += String(gps.date.day());
+        html += "/";
+        html += String(gps.date.month());
+        html += "/";
+        html += String(gps.date.year());
+        html += "</p>";
+    }
+
+    if (gps.time.isValid())
+    {
+        html += "<p><b>UTC Time:</b> ";
+        html += String(gps.time.hour());
+        html += ":";
+        html += String(gps.time.minute());
+        html += ":";
+        html += String(gps.time.second());
+        html += "</p>";
+    }
+
+    html += "<hr>";
+
+    html += "<a href='/gps'>GPS JSON</a>";
+
+    html += "<br><br>";
+
+    html += "<img src='/capture' width='640'>";
+
+    html += "</body></html>";
+
+    server.send(
+        200,
+        "text/html",
+        html
+    );
+}
+
+// =========================
+// GPS JSON OUTPUT
+// =========================
+
+void handleGPS()
+{
+    String json = "{";
+
+    json += "\"lat\":";
+    json += String(currentLat, 6);
+
+    json += ",\"lon\":";
+    json += String(currentLon, 6);
+
+    json += ",\"alt\":";
+    json += String(currentAlt, 2);
+
+    json += ",\"sats\":";
+    json += String(trackedSats);
+
+    json += ",\"speed_knots\":";
+    json += String(boatSpeed, 2);
+
+    json += ",\"speed_kmh\":";
+    json += String(boatSpeed * 1.852, 2);
+
+    json += ",\"distance\":";
+    json += String(totalDistance, 2);
+
+    if (gps.hdop.isValid())
+    {
+        json += ",\"hdop\":";
+        json += String(gps.hdop.value());
+    }
+
+    if (gps.date.isValid())
+    {
+        json += ",\"day\":";
+        json += String(gps.date.day());
+
+        json += ",\"month\":";
+        json += String(gps.date.month());
+
+        json += ",\"year\":";
+        json += String(gps.date.year());
+    }
+
+    if (gps.time.isValid())
+    {
+        json += ",\"hour\":";
+        json += String(gps.time.hour());
+
+        json += ",\"minute\":";
+        json += String(gps.time.minute());
+
+        json += ",\"second\":";
+        json += String(gps.time.second());
+    }
+
+    json += "}";
+
+    server.send(
+        200,
+        "application/json",
+        json
+    );
+}
+
+// =========================
+// CAMERA CAPTURE
+// =========================
+
+void handleCapture()
+{
+    camera_fb_t *fb = esp_camera_fb_get();
+
+    if (!fb)
+    {
+        server.send(
+            500,
+            "text/plain",
+            "Camera Capture Failed"
+        );
+
+        return;
+    }
+
+    server.send_P(
+        200,
+        "image/jpeg",
+        (const char *)fb->buf,
+        fb->len
+    );
+
+    esp_camera_fb_return(fb);
+}
+
+// =========================
+// CAMERA CONFIGURATION
+// =========================
+
+void camera_config(camera_config_t &config)
+{
+    config.ledc_channel = LEDC_CHANNEL_0;
+    config.ledc_timer = LEDC_TIMER_0;
+
+    config.pin_d0 = Y2_GPIO_NUM;
+    config.pin_d1 = Y3_GPIO_NUM;
+    config.pin_d2 = Y4_GPIO_NUM;
+    config.pin_d3 = Y5_GPIO_NUM;
+    config.pin_d4 = Y6_GPIO_NUM;
+    config.pin_d5 = Y7_GPIO_NUM;
+    config.pin_d6 = Y8_GPIO_NUM;
+    config.pin_d7 = Y9_GPIO_NUM;
+
+    config.pin_xclk = XCLK_GPIO_NUM;
+    config.pin_pclk = PCLK_GPIO_NUM;
+
+    config.pin_vsync = VSYNC_GPIO_NUM;
+    config.pin_href = HREF_GPIO_NUM;
+
+    config.pin_sccb_sda = SIOD_GPIO_NUM;
+    config.pin_sccb_scl = SIOC_GPIO_NUM;
+
+    config.pin_pwdn = PWDN_GPIO_NUM;
+    config.pin_reset = RESET_GPIO_NUM;
+
+    config.xclk_freq_hz = 20000000;
+
+    config.pixel_format = PIXFORMAT_JPEG;
 }
