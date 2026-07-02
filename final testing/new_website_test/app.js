@@ -66,6 +66,8 @@ function initMap() {
   const icon = L.divIcon({
     className: "boat-marker",
     html: `<div class="marker-pin"><span></span></div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 34],
   });
 
   leafletMarker = L.marker([0, 0], { icon }).addTo(leafletMap);
@@ -243,13 +245,14 @@ function addressFromPayload(parsed) {
   return [streetLine, city, postcode].filter(Boolean).join(", ") || null;
 }
 
-// Nominatim's public endpoint asks for max ~1 request/second and gets
-// unreliable if hit too often. We only re-query when the position has
-// moved a meaningful distance AND enough time has passed, and we cancel
-// any in-flight request before starting a new one so a slow, stale
-// response can never overwrite a newer result.
-const MIN_GEOCODE_INTERVAL_MS = 12000;
-const MIN_GEOCODE_DISTANCE_M = 60;
+// The address is only re-looked-up once the device has actually moved a
+// meaningful distance — not just because time passed. We still keep a
+// tiny safety floor (a couple of seconds) purely so GPS jitter can't fire
+// two requests back-to-back; it should never be noticeable in practice.
+// We also cancel any in-flight request before starting a new one so a
+// slow, stale response can never overwrite a newer result.
+const MIN_GEOCODE_DISTANCE_M = 10;
+const MIN_GEOCODE_SAFETY_FLOOR_MS = 2000;
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -268,7 +271,7 @@ function scheduleReverseGeocode(latitude, longitude) {
   if (lastReverseGeocodeLat !== null) {
     const movedMeters = haversineMeters(lastReverseGeocodeLat, lastReverseGeocodeLon, latitude, longitude);
     const elapsed = now - lastReverseGeocodeAt;
-    if (movedMeters < MIN_GEOCODE_DISTANCE_M && elapsed < MIN_GEOCODE_INTERVAL_MS) return;
+    if (movedMeters < MIN_GEOCODE_DISTANCE_M || elapsed < MIN_GEOCODE_SAFETY_FLOOR_MS) return;
   }
 
   clearTimeout(reverseGeocodeTimer);

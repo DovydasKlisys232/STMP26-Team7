@@ -1,4 +1,4 @@
-#define MQTT_MAX_PACKET_SIZE 16384
+#define MQTT_MAX_PACKET_SIZE 32768 
 
 #include <WiFi.h>
 #include <TinyGPS++.h>
@@ -340,7 +340,7 @@ void connectToMQTT()
 
 void publishTelemetry()
 {
-    StaticJsonDocument<16384> doc;
+    StaticJsonDocument<256> doc;
 
     doc["temperature"] = 22.4;
 

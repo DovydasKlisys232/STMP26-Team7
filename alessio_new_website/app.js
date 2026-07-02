@@ -39,6 +39,7 @@ let reverseGeocodeAbort = null;
 let lastReverseGeocodeAt = 0;
 let lastReverseGeocodeLat = null;
 let lastReverseGeocodeLon = null;
+let currentAddressLabel = "";
 
 let leafletMap = null;
 let leafletMarker = null;
@@ -61,8 +62,10 @@ function initMap() {
   }).addTo(leafletMap);
 
   const icon = L.divIcon({
-    className: "boat-marker",
-    html: `<div class="marker-pin"><span></span></div>`,
+    className: "user-location-marker",
+    html: `<div class="location-pulse"></div><div class="location-dot"></div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
   });
 
   leafletMarker = L.marker([0, 0], { icon }).addTo(leafletMap);
@@ -208,8 +211,13 @@ function updateMetrics(data, receivedAt) {
     els.mapsLink.href = `https://www.openstreetmap.org/?mlat=${data.latitude}&mlon=${data.longitude}#map=16/${data.latitude}/${data.longitude}`;
     els.mapsLink.classList.add("ready");
     moveMarker(data.latitude, data.longitude);
-    updateAddress(data.address || "Searching location...", data.address ? "" : "loading");
-    if (!data.address) scheduleReverseGeocode(data.latitude, data.longitude);
+
+    if (data.address) {
+      updateAddress(data.address);
+    } else {
+      if (!currentAddressLabel) updateAddress("Searching location...", "loading", false);
+      scheduleReverseGeocode(data.latitude, data.longitude);
+    }
   }
 
   if (data.photo) {
@@ -221,10 +229,11 @@ function updateMetrics(data, receivedAt) {
   els.lastUpdate.textContent = receivedAt.toLocaleTimeString("en-GB");
 }
 
-function updateAddress(text, mode = "") {
+function updateAddress(text, mode = "", persist = true) {
   els.positionAddress.textContent = text;
   els.mapAddress.textContent = text;
   els.positionAddress.className = `address-value ${mode}`.trim();
+  if (persist) currentAddressLabel = text;
 }
 
 function addressFromPayload(parsed) {
@@ -241,11 +250,6 @@ function addressFromPayload(parsed) {
   return [streetLine, city, postcode].filter(Boolean).join(", ") || null;
 }
 
-// Nominatim's public endpoint asks for max ~1 request/second and gets
-// unreliable if hit too often. We only re-query when the position has
-// moved a meaningful distance AND enough time has passed, and we cancel
-// any in-flight request before starting a new one so a slow, stale
-// response can never overwrite a newer result.
 const MIN_GEOCODE_INTERVAL_MS = 12000;
 const MIN_GEOCODE_DISTANCE_M = 60;
 
@@ -257,6 +261,7 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
@@ -266,7 +271,9 @@ function scheduleReverseGeocode(latitude, longitude) {
   if (lastReverseGeocodeLat !== null) {
     const movedMeters = haversineMeters(lastReverseGeocodeLat, lastReverseGeocodeLon, latitude, longitude);
     const elapsed = now - lastReverseGeocodeAt;
-    if (movedMeters < MIN_GEOCODE_DISTANCE_M && elapsed < MIN_GEOCODE_INTERVAL_MS) return;
+
+    if (currentAddressLabel && movedMeters < MIN_GEOCODE_DISTANCE_M) return;
+    if (elapsed < MIN_GEOCODE_INTERVAL_MS) return;
   }
 
   clearTimeout(reverseGeocodeTimer);
@@ -291,15 +298,21 @@ async function reverseGeocode(latitude, longitude) {
       addressdetails: "1",
       "accept-language": "en",
     });
+
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, { signal });
     if (!response.ok) throw new Error("reverse geocoding failed");
 
     const result = await response.json();
     const label = formatReverseAddress(result.address, result.display_name);
-    updateAddress(label || "Location not found", label ? "" : "muted");
+
+    if (label) {
+      updateAddress(label);
+    } else if (!currentAddressLabel) {
+      updateAddress("Location not found", "muted", false);
+    }
   } catch (error) {
     if (error.name === "AbortError") return;
-    updateAddress("Location unavailable", "muted");
+    if (!currentAddressLabel) updateAddress("Location unavailable", "muted", false);
   }
 }
 
@@ -322,9 +335,11 @@ function savePhoto(src, format, receivedAt) {
     format: format || "Image",
     receivedAt,
   };
+
   photoHistory.unshift(photo);
   photoHistory = photoHistory.slice(0, 24);
   selectedPhotoId = photo.id;
+
   return photo;
 }
 
@@ -339,6 +354,7 @@ function showPhoto(photo) {
 
 function renderPhotoHistory() {
   const count = photoHistory.length;
+
   els.photoCount.textContent = count === 0
     ? "No photos saved in memory"
     : `${count} ${count === 1 ? "photo saved" : "photos saved"} in memory`;
@@ -368,6 +384,7 @@ function renderPhotoHistory() {
 
 function imageFromPayload(parsed, rawPayload) {
   const camera = parsed.camera || {};
+
   const candidate = firstText(
     parsed.photo,
     parsed.image,
@@ -383,6 +400,7 @@ function imageFromPayload(parsed, rawPayload) {
   if (candidate) return normalizeImage(candidate);
 
   const raw = rawPayload.trim();
+
   if (/^data:image\//.test(raw) || looksLikeBase64Jpeg(raw)) {
     return normalizeImage(raw);
   }
@@ -400,7 +418,16 @@ function normalizeImage(value) {
     return { src: value, format };
   }
 
-  if (/^https?:\/\//.test(value) || /^blob:/.test(value)) {
+  if (/^https?:\/\//.test(value)) {
+    // HTTP/HTTPS image support.
+    // The cache-buster forces the browser to download the newest image
+    // even when the ESP32 camera reuses the same image URL.
+    const separator = value.includes("?") ? "&" : "?";
+    const cacheBuster = `t=${Date.now()}`;
+    return { src: `${value}${separator}${cacheBuster}`, format: "HTTP URL" };
+  }
+
+  if (/^blob:/.test(value)) {
     return { src: value, format: "URL" };
   }
 
@@ -436,6 +463,7 @@ function compactImageFields(value) {
 
   for (const key of Object.keys(value)) {
     const normalized = key.toLowerCase();
+
     if (["photo", "image", "frame", "jpeg", "jpg"].includes(normalized) && typeof value[key] === "string") {
       value[key] = `[image ${Math.round(value[key].length / 1024)} KB]`;
     } else {
@@ -466,6 +494,7 @@ function moveMarker(latitude, longitude) {
   if (!leafletMap.hasLayer(leafletMarker)) {
     leafletMarker.addTo(leafletMap);
   }
+
   leafletMarker.setLatLng(latLng);
 
   if (!hasCenteredMap) {
@@ -475,8 +504,6 @@ function moveMarker(latitude, longitude) {
     leafletMap.panTo(latLng);
   }
 
-  // Leaflet mounts into a card whose size can change after layout/resize;
-  // this keeps tile rendering correct if the container was resized.
   requestAnimationFrame(() => leafletMap.invalidateSize());
 }
 
@@ -488,15 +515,19 @@ function renderLog() {
 
   els.payloadTable.innerHTML = messages.map((message) => {
     const { data } = message;
+
     const temp = data.temperature === null ? "--" : `${data.temperature.toFixed(1)} °C`;
+
     const navigation = [
       data.distance === null ? "--" : `${data.distance.toFixed(1)} m`,
       data.speed === null ? "--" : `${data.speed.toFixed(1)} km/h`,
       data.altitude === null ? "--" : `${data.altitude.toFixed(1)} m`,
     ].join(" / ");
+
     const gps = data.latitude === null || data.longitude === null
       ? "--"
       : `${data.latitude.toFixed(5)}, ${data.longitude.toFixed(5)}`;
+
     const photo = data.photo ? data.photoFormat || "yes" : "--";
 
     return `
@@ -526,10 +557,12 @@ window.addEventListener("resize", () => {
 });
 
 els.connectBtn.addEventListener("click", connectMqtt);
+
 els.clearLogBtn.addEventListener("click", () => {
   messages = [];
   renderLog();
 });
+
 els.clearPhotosBtn.addEventListener("click", () => {
   photoHistory = [];
   selectedPhotoId = null;
@@ -540,6 +573,7 @@ els.clearPhotosBtn.addEventListener("click", () => {
   els.cameraFormat.textContent = "--";
   renderPhotoHistory();
 });
+
 els.photoStrip.addEventListener("click", (event) => {
   const button = event.target.closest("[data-photo-id]");
   if (!button) return;
