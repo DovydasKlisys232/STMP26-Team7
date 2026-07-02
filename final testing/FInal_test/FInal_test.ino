@@ -4,25 +4,44 @@
 #include <TinyGPS++.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <WebServer.h> // Library for HTTP Web Server
+#include <WebServer.h> 
 
+// =========================================================================
+// IL TRUCCO MAGICO: Risoluzione del conflitto "sensor_t" tra Camera e Adafruit
+// =========================================================================
+#define sensor_t camera_sensor_t
 #include "esp_camera.h"
+#undef sensor_t
+// =========================================================================
+
+#include <Wire.h>              
+#include <Adafruit_BMP280.h>   
 #include "camera_pins.h"
 
 // =========================
 // WIFI CONFIGURATION
 // =========================
 
-const char* mqtt_server = "10.26.119.138";
+const char* mqtt_server = "10.26.119.138"; 
 const int mqtt_port = 1883;
 const char* mqtt_topic = "esp32/telemetry";
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-WebServer server(80); // Web Server initialization on port 80
+WebServer server(80);
 
 const char* ssid = "DK_wifi";
 const char* password = "ghtx4445";
+
+// =========================
+// SENSOR BMP280 CONFIGURATION
+// =========================
+#define I2C_SDA_PIN 42   
+#define I2C_SCL_PIN 41   
+
+// Inizializziamo il sensore usando il bus Wire standard senza parametri extra
+Adafruit_BMP280 bmp; 
+bool bmpAvailable = false;
 
 // =========================
 // GNSS CONFIGURATION
@@ -44,7 +63,6 @@ double currentAlt = 0.0;
 int trackedSats = 0;
 
 float boatSpeed = 0.0;
-float airPressure = 1013.25;
 
 double totalDistance = 0.0;
 double lastLat = 0.0;
@@ -52,6 +70,7 @@ double lastLon = 0.0;
 
 unsigned long lastPublish = 0;
 const unsigned long publishInterval = 5000;
+unsigned long lastMQTTReconnectAttempt = 0; 
 
 // =========================
 // FUNCTION DECLARATIONS
@@ -61,7 +80,9 @@ void connectToWiFi();
 void connectToMQTT();
 void publishTelemetry();
 void camera_config(camera_config_t &config);
-void handleJpg(); // Function declaration to send the photo via HTTP
+void handleJpg(); 
+void handleRoot();
+void handleGPS();
 
 // =========================
 // SETUP
@@ -73,10 +94,10 @@ void setup()
     delay(1000);
 
     Serial.println();
-    Serial.println("=== AquaVision Camera + GNSS Test (Hybrid MQTT+HTTP) ===");
+    Serial.println("=== AquaVision Hybrid (Camera + GNSS + BMP280) ===");
 
     // =========================
-    // CAMERA SETUP
+    // 1. CAMERA SETUP (Deve avvenire per primo!)
     // =========================
 
     camera_config_t config;
@@ -106,18 +127,35 @@ void setup()
     if (err != ESP_OK)
     {
         Serial.printf("Camera Init Failed: 0x%x\n", err);
-        while (true)
+    }
+    else 
+    {
+        Serial.println("Camera Init Success");
+        // Notare l'uso di camera_sensor_t invece di sensor_t per via del trucco!
+        camera_sensor_t *s = esp_camera_sensor_get();
+        if (s)
         {
-            delay(1000);
+            Serial.printf("Camera PID: 0x%02X\n", s->id.PID);
+            s->set_brightness(s, 1);
         }
     }
 
-    Serial.println("Camera Init Success");
-    sensor_t *s = esp_camera_sensor_get();
-    if (s)
-    {
-        Serial.printf("Camera PID: 0x%02X\n", s->id.PID);
-        s->set_brightness(s, 1);
+    // =========================
+    // 2. SENSOR BMP280 SETUP (Dopo la fotocamera)
+    // =========================
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    
+    if (!bmp.begin(0x76) && !bmp.begin(0x77)) {
+        Serial.println("Errore: BMP280 non trovato. Controlla I2C.");
+        bmpAvailable = false;
+    } else {
+        bmpAvailable = true;
+        bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
+                        Adafruit_BMP280::SAMPLING_X2,   
+                        Adafruit_BMP280::SAMPLING_X16,  
+                        Adafruit_BMP280::FILTER_X16,
+                        Adafruit_BMP280::STANDBY_MS_500);
+        Serial.println("BMP280 Inizializzato con successo sul Bus condiviso!");
     }
 
     // =========================
@@ -133,13 +171,12 @@ void setup()
 
     connectToWiFi();
 
-    // MQTT Configuration
     mqttClient.setServer(mqtt_server, mqtt_port);
+    mqttClient.setBufferSize(1024, 1024);
 
-    // HTTP Endpoint Configuration for the camera - USING THE WORKING CODE FROM test_full_system.ino
-    server.on("/", handleRoot);   // Add a root page like in test_full_system.ino
+    server.on("/", handleRoot);   
     server.on("/cam.jpg", handleJpg);
-    server.on("/gps", handleGPS); // Add GPS JSON endpoint
+    server.on("/gps", handleGPS); 
     
     server.begin();
     Serial.println("HTTP Server started on port 80");
@@ -151,15 +188,23 @@ void setup()
 
 void loop()
 {
-    // Listen for and handle incoming HTTP requests from the browser
+    // Ascolta e gestisce le richieste HTTP
     server.handleClient();
 
+    // Riconnessione MQTT NON bloccante
     if (!mqttClient.connected())
     {
-        connectToMQTT();
+        unsigned long currentMillis = millis();
+        if (currentMillis - lastMQTTReconnectAttempt > 5000) 
+        {
+            lastMQTTReconnectAttempt = currentMillis;
+            connectToMQTT();
+        }
     }
-
-    mqttClient.loop();
+    else 
+    {
+        mqttClient.loop();
+    }
 
     while (Serial1.available())
     {
@@ -201,17 +246,18 @@ void loop()
 
     if (millis() - lastPublish >= publishInterval)
     {
-        publishTelemetry();
+        if (mqttClient.connected()) {
+            publishTelemetry();
+        }
         lastPublish = millis();
     }
 }
 
 // =========================
-// HTTP JPG HANDLER - FIXED WITH DELAY AND CORS
+// HTTP JPG HANDLER
 // =========================
 
 void handleJpg() {
-    // Add a small delay to let the camera stabilize
     delay(50);
     
     camera_fb_t *fb = esp_camera_fb_get();
@@ -221,85 +267,35 @@ void handleJpg() {
         return;
     }
     
-    // Add CORS header to allow your website (port 8080) to access the image
     server.sendHeader("Access-Control-Allow-Origin", "*");
-    
-    // Send JPEG image directly as binary to the browser
     server.send_P(200, "image/jpeg", (const char *)fb->buf, fb->len);
     esp_camera_fb_return(fb);
 }
 
 // =========================
-// ROOT PAGE - (Optional, copied from test_full_system.ino)
+// ROOT PAGE 
 // =========================
 
 void handleRoot()
 {
     String html;
-
     html += "<html><body>";
-    html += "<h1>AquaVision GNSS + Camera + MQTT</h1>";
-
+    html += "<h1>AquaVision GNSS + Camera + MQTT + BMP280</h1>";
     html += "<h2>GNSS Data</h2>";
+    html += "<p><b>Latitude:</b> " + String(currentLat, 6) + "</p>";
+    html += "<p><b>Longitude:</b> " + String(currentLon, 6) + "</p>";
+    html += "<p><b>Altitude:</b> " + String(currentAlt, 2) + " m</p>";
+    html += "<p><b>Satellites:</b> " + String(trackedSats) + "</p>";
+    html += "<p><b>Speed:</b> " + String(boatSpeed, 2) + " knots (" + String(boatSpeed * 1.852, 2) + " km/h)</p>";
+    html += "<p><b>Total Distance:</b> " + String(totalDistance, 2) + " m</p>";
 
-    html += "<p><b>Latitude:</b> ";
-    html += String(currentLat, 6);
-    html += "</p>";
-
-    html += "<p><b>Longitude:</b> ";
-    html += String(currentLon, 6);
-    html += "</p>";
-
-    html += "<p><b>Altitude:</b> ";
-    html += String(currentAlt, 2);
-    html += " m</p>";
-
-    html += "<p><b>Satellites:</b> ";
-    html += String(trackedSats);
-    html += "</p>";
-
-    html += "<p><b>Speed:</b> ";
-    html += String(boatSpeed, 2);
-    html += " knots (";
-    html += String(boatSpeed * 1.852, 2);
-    html += " km/h)</p>";
-
-    html += "<p><b>Total Distance:</b> ";
-    html += String(totalDistance, 2);
-    html += " m</p>";
-
-    if (gps.hdop.isValid())
-    {
-        html += "<p><b>HDOP:</b> ";
-        html += String(gps.hdop.value());
-        html += "</p>";
+    if (bmpAvailable) {
+        html += "<h2>Atmosfera</h2>";
+        html += "<p><b>Temperatura:</b> " + String(bmp.readTemperature(), 2) + " C</p>";
+        html += "<p><b>Pressione:</b> " + String(bmp.readPressure() / 100.0F, 2) + " hPa</p>";
     }
 
-    if (gps.date.isValid())
-    {
-        html += "<p><b>Date:</b> ";
-        html += String(gps.date.day());
-        html += "/";
-        html += String(gps.date.month());
-        html += "/";
-        html += String(gps.date.year());
-        html += "</p>";
-    }
-
-    if (gps.time.isValid())
-    {
-        html += "<p><b>UTC Time:</b> ";
-        html += String(gps.time.hour());
-        html += ":";
-        html += String(gps.time.minute());
-        html += ":";
-        html += String(gps.time.second());
-        html += "</p>";
-    }
-
-    html += "<hr>";
-    html += "<a href='/gps'>GPS JSON</a>";
-    html += "<br><br>";
+    html += "<hr><a href='/gps'>GPS JSON</a><br><br>";
     html += "<img src='/cam.jpg' width='640'>";
     html += "</body></html>";
 
@@ -307,64 +303,24 @@ void handleRoot()
 }
 
 // =========================
-// GPS JSON OUTPUT - (Copied from test_full_system.ino)
+// GPS JSON OUTPUT 
 // =========================
 
 void handleGPS()
 {
     String json = "{";
-
-    json += "\"lat\":";
-    json += String(currentLat, 6);
-
-    json += ",\"lon\":";
-    json += String(currentLon, 6);
-
-    json += ",\"alt\":";
-    json += String(currentAlt, 2);
-
-    json += ",\"sats\":";
-    json += String(trackedSats);
-
-    json += ",\"speed_knots\":";
-    json += String(boatSpeed, 2);
-
-    json += ",\"speed_kmh\":";
-    json += String(boatSpeed * 1.852, 2);
-
-    json += ",\"distance\":";
-    json += String(totalDistance, 2);
-
-    if (gps.hdop.isValid())
-    {
-        json += ",\"hdop\":";
-        json += String(gps.hdop.value());
+    json += "\"lat\":" + String(currentLat, 6) + ",";
+    json += "\"lon\":" + String(currentLon, 6) + ",";
+    json += "\"alt\":" + String(currentAlt, 2) + ",";
+    json += "\"sats\":" + String(trackedSats) + ",";
+    json += "\"speed_knots\":" + String(boatSpeed, 2) + ",";
+    json += "\"speed_kmh\":" + String(boatSpeed * 1.852, 2) + ",";
+    json += "\"distance\":" + String(totalDistance, 2);
+    
+    if (bmpAvailable) {
+        json += ",\"temperature\":" + String(bmp.readTemperature(), 2) + ",";
+        json += "\"pressure\":" + String(bmp.readPressure() / 100.0F, 2);
     }
-
-    if (gps.date.isValid())
-    {
-        json += ",\"day\":";
-        json += String(gps.date.day());
-
-        json += ",\"month\":";
-        json += String(gps.date.month());
-
-        json += ",\"year\":";
-        json += String(gps.date.year());
-    }
-
-    if (gps.time.isValid())
-    {
-        json += ",\"hour\":";
-        json += String(gps.time.hour());
-
-        json += ",\"minute\":";
-        json += String(gps.time.minute());
-
-        json += ",\"second\":";
-        json += String(gps.time.second());
-    }
-
     json += "}";
 
     server.send(200, "application/json", json);
@@ -387,8 +343,7 @@ void connectToWiFi()
         Serial.print(".");
     }
 
-    Serial.println();
-    Serial.println("WiFi Connected");
+    Serial.println("\nWiFi Connected");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
 }
@@ -401,7 +356,6 @@ void camera_config(camera_config_t &config)
 {
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
-
     config.pin_d0 = Y2_GPIO_NUM;
     config.pin_d1 = Y3_GPIO_NUM;
     config.pin_d2 = Y4_GPIO_NUM;
@@ -410,19 +364,14 @@ void camera_config(camera_config_t &config)
     config.pin_d5 = Y7_GPIO_NUM;
     config.pin_d6 = Y8_GPIO_NUM;
     config.pin_d7 = Y9_GPIO_NUM;
-
     config.pin_xclk = XCLK_GPIO_NUM;
     config.pin_pclk = PCLK_GPIO_NUM;
-
     config.pin_vsync = VSYNC_GPIO_NUM;
     config.pin_href = HREF_GPIO_NUM;
-
     config.pin_sccb_sda = SIOD_GPIO_NUM;
     config.pin_sccb_scl = SIOC_GPIO_NUM;
-
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-
     config.xclk_freq_hz = 20000000;
     config.pixel_format = PIXFORMAT_JPEG;
 }
@@ -433,23 +382,19 @@ void camera_config(camera_config_t &config)
 
 void connectToMQTT()
 {
-    while (!mqttClient.connected())
+    String clientID = "ESP32S3-AquaVision-";
+    clientID += String(random(0xffff), HEX);
+
+    Serial.print("Connecting MQTT...");
+
+    if (mqttClient.connect(clientID.c_str()))
     {
-        String clientID = "ESP32S3-AquaVision-";
-        clientID += String(random(0xffff), HEX);
-
-        Serial.print("Connecting MQTT...");
-
-        if (mqttClient.connect(clientID.c_str()))
-        {
-            Serial.println("CONNECTED");
-        }
-        else
-        {
-            Serial.print("FAILED state=");
-            Serial.println(mqttClient.state());
-            delay(5000);
-        }
+        Serial.println("CONNECTED");
+    }
+    else
+    {
+        Serial.print("FAILED state=");
+        Serial.println(mqttClient.state());
     }
 }
 
@@ -461,7 +406,14 @@ void publishTelemetry()
 {
     StaticJsonDocument<512> doc;
 
-    doc["temperature"] = 22.4;
+    if (bmpAvailable) {
+        doc["temperature"] = bmp.readTemperature();
+        doc["pressure"] = bmp.readPressure() / 100.0F;
+    } else {
+        doc["temperature"] = 0.0;
+        doc["pressure"] = 0.0;
+    }
+    
     doc["lat"] = currentLat;
     doc["lon"] = currentLon;
     doc["alt"] = currentAlt;
@@ -469,26 +421,18 @@ void publishTelemetry()
     doc["speed"] = boatSpeed * 1.852;
     doc["distance"] = totalDistance;
 
-    if (gps.hdop.isValid())
-    {
-        doc["hdop"] = gps.hdop.value();
-    }
-
-    if (gps.date.isValid())
-    {
+    if (gps.hdop.isValid()) { doc["hdop"] = gps.hdop.value(); }
+    if (gps.date.isValid()) {
         doc["day"] = gps.date.day();
         doc["month"] = gps.date.month();
         doc["year"] = gps.date.year();
     }
-
-    if (gps.time.isValid())
-    {
+    if (gps.time.isValid()) {
         doc["hour"] = gps.time.hour();
         doc["minute"] = gps.time.minute();
         doc["second"] = gps.time.second();
     }
 
-    // Dynamically generate HTTP URL pointing to the ESP32's IP address
     String photoUrl = "http://" + WiFi.localIP().toString() + "/cam.jpg";
     doc["photo"] = photoUrl;
 
