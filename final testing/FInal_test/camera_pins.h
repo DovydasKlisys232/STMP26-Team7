@@ -12,7 +12,7 @@ Purpose: This is the header file that contains all camera pin connections to the
 
 // Clock Signals
 #define XCLK_GPIO_NUM    7
-#define PCLK_GPIO_NUM    17
+#define PCLK_GPIO_NUM    35
 
 // SCCB
 #define SIOD_GPIO_NUM    42
@@ -21,7 +21,7 @@ Purpose: This is the header file that contains all camera pin connections to the
 // Data Bus
 #define Y2_GPIO_NUM      5
 #define Y3_GPIO_NUM      6
-#define Y4_GPIO_NUM      18
+#define Y4_GPIO_NUM      37
 #define Y5_GPIO_NUM      8
 #define Y6_GPIO_NUM      9
 #define Y7_GPIO_NUM      10
