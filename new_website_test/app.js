@@ -21,7 +21,8 @@ const els = {
   mapsLink: document.querySelector("#mapsLink"),
   mapLabel: document.querySelector("#mapLabel"),
   mapAddress: document.querySelector("#mapAddress"),
-  mapMarker: document.querySelector("#mapMarker"),
+  mapCanvas: document.querySelector("#mapCanvas"),
+  mapPlaceholder: document.querySelector("#mapPlaceholder"),
   lastUpdate: document.querySelector("#lastUpdate"),
   cameraImage: document.querySelector("#cameraImage"),
   cameraEmpty: document.querySelector("#cameraEmpty"),
@@ -37,11 +38,39 @@ let messages = [];
 let photoHistory = [];
 let selectedPhotoId = null;
 let reverseGeocodeTimer = null;
-let lastReverseGeocodeKey = "";
+let reverseGeocodeAbort = null;
 let lastReverseGeocodeAt = 0;
+let lastReverseGeocodeLat = null;
+let lastReverseGeocodeLon = null;
+
+let leafletMap = null;
+let leafletMarker = null;
 
 els.clientId.value = `web-esp32-${Math.random().toString(16).slice(2, 8)}`;
 initCursorGlow();
+initMap();
+
+function initMap() {
+  if (!window.L || !els.mapCanvas) return;
+
+  leafletMap = L.map(els.mapCanvas, {
+    zoomControl: true,
+    attributionControl: true,
+  }).setView([0, 0], 2);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(leafletMap);
+
+  const icon = L.divIcon({
+    className: "boat-marker",
+    html: `<div class="marker-pin"><span></span></div>`,
+  });
+
+  leafletMarker = L.marker([0, 0], { icon }).addTo(leafletMap);
+  leafletMap.removeLayer(leafletMarker);
+}
 
 function setStatus(text, mode = "") {
   els.connectionStatus.className = `status-pill ${mode}`.trim();
@@ -214,18 +243,46 @@ function addressFromPayload(parsed) {
   return [streetLine, city, postcode].filter(Boolean).join(", ") || null;
 }
 
-function scheduleReverseGeocode(latitude, longitude) {
-  const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
-  const now = Date.now();
+// Nominatim's public endpoint asks for max ~1 request/second and gets
+// unreliable if hit too often. We only re-query when the position has
+// moved a meaningful distance AND enough time has passed, and we cancel
+// any in-flight request before starting a new one so a slow, stale
+// response can never overwrite a newer result.
+const MIN_GEOCODE_INTERVAL_MS = 12000;
+const MIN_GEOCODE_DISTANCE_M = 60;
 
-  if (key === lastReverseGeocodeKey && now - lastReverseGeocodeAt < 60000) return;
-  clearTimeout(reverseGeocodeTimer);
-  reverseGeocodeTimer = setTimeout(() => reverseGeocode(latitude, longitude, key), 900);
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-async function reverseGeocode(latitude, longitude, key) {
-  lastReverseGeocodeKey = key;
+function scheduleReverseGeocode(latitude, longitude) {
+  const now = Date.now();
+
+  if (lastReverseGeocodeLat !== null) {
+    const movedMeters = haversineMeters(lastReverseGeocodeLat, lastReverseGeocodeLon, latitude, longitude);
+    const elapsed = now - lastReverseGeocodeAt;
+    if (movedMeters < MIN_GEOCODE_DISTANCE_M && elapsed < MIN_GEOCODE_INTERVAL_MS) return;
+  }
+
+  clearTimeout(reverseGeocodeTimer);
+  reverseGeocodeTimer = setTimeout(() => reverseGeocode(latitude, longitude), 900);
+}
+
+async function reverseGeocode(latitude, longitude) {
   lastReverseGeocodeAt = Date.now();
+  lastReverseGeocodeLat = latitude;
+  lastReverseGeocodeLon = longitude;
+
+  reverseGeocodeAbort?.abort();
+  reverseGeocodeAbort = new AbortController();
+  const { signal } = reverseGeocodeAbort;
 
   try {
     const params = new URLSearchParams({
@@ -236,13 +293,14 @@ async function reverseGeocode(latitude, longitude, key) {
       addressdetails: "1",
       "accept-language": "it",
     });
-    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`);
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, { signal });
     if (!response.ok) throw new Error("reverse geocoding failed");
 
     const result = await response.json();
     const label = formatReverseAddress(result.address, result.display_name);
     updateAddress(label || "Location not found", label ? "" : "muted");
-  } catch {
+  } catch (error) {
+    if (error.name === "AbortError") return;
     updateAddress("Location unavailable", "muted");
   }
 }
@@ -404,11 +462,29 @@ function updateAxis(label, bar, value) {
   bar.style.left = clamped < 0 ? `${50 - width}%` : "50%";
 }
 
+let hasCenteredMap = false;
+
 function moveMarker(latitude, longitude) {
-  const left = 10 + (((longitude + 180) % 360) / 360) * 80;
-  const top = 10 + ((90 - latitude) / 180) * 80;
-  els.mapMarker.style.left = `${Math.max(10, Math.min(90, left))}%`;
-  els.mapMarker.style.top = `${Math.max(12, Math.min(88, top))}%`;
+  if (els.mapPlaceholder) els.mapPlaceholder.classList.add("hidden");
+  if (!leafletMap || !leafletMarker) return;
+
+  const latLng = [latitude, longitude];
+
+  if (!leafletMap.hasLayer(leafletMarker)) {
+    leafletMarker.addTo(leafletMap);
+  }
+  leafletMarker.setLatLng(latLng);
+
+  if (!hasCenteredMap) {
+    leafletMap.setView(latLng, 15);
+    hasCenteredMap = true;
+  } else {
+    leafletMap.panTo(latLng);
+  }
+
+  // Leaflet mounts into a card whose size can change after layout/resize;
+  // this keeps tile rendering correct if the container was resized.
+  requestAnimationFrame(() => leafletMap.invalidateSize());
 }
 
 function renderLog() {
@@ -449,6 +525,10 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+
+window.addEventListener("resize", () => {
+  if (leafletMap) leafletMap.invalidateSize();
+});
 
 els.connectBtn.addEventListener("click", connectMqtt);
 els.clearLogBtn.addEventListener("click", () => {
