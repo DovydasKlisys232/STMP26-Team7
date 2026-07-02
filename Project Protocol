@@ -31,7 +31,7 @@ To ensure a smooth workflow, the core development responsibilities have been spl
         Responsible: Lucia (Spain), Fabian & Nhi (Germany)
 
         Task: Continuously reading and decoding satellite data from the Waveshare LC29H GNSS receiver via TinyGPS++.
-              Packaging the live latitude, longitude, speed, and calculated total distance tracking (odometer feature) into a standardized JSON text string,
+              Packaging the live latitude, longitude, speed, temperature and calculated total distance tracking (odometer feature) into a standardized JSON text string,
               and pushing it live over a Wi-Fi hotspot to the central MQTT broker (broker.hivemq.com).
 
 ### ⚠️ Encountered Problems & Solutions ###
