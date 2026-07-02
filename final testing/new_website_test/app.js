@@ -9,12 +9,9 @@ const els = {
   temperatureValue: document.querySelector("#temperatureValue"),
   temperatureGauge: document.querySelector("#temperatureGauge"),
   temperatureHint: document.querySelector("#temperatureHint"),
-  accX: document.querySelector("#accX"),
-  accY: document.querySelector("#accY"),
-  accZ: document.querySelector("#accZ"),
-  barX: document.querySelector("#barX"),
-  barY: document.querySelector("#barY"),
-  barZ: document.querySelector("#barZ"),
+  distanceValue: document.querySelector("#distanceValue"),
+  speedValue: document.querySelector("#speedValue"),
+  altitudeValue: document.querySelector("#altitudeValue"),
   latitudeValue: document.querySelector("#latitudeValue"),
   longitudeValue: document.querySelector("#longitudeValue"),
   positionAddress: document.querySelector("#positionAddress"),
@@ -37,14 +34,18 @@ let mqttClient = null;
 let messages = [];
 let photoHistory = [];
 let selectedPhotoId = null;
+let lastPhotoUpdateAt = 0;
 let reverseGeocodeTimer = null;
 let reverseGeocodeAbort = null;
 let lastReverseGeocodeAt = 0;
 let lastReverseGeocodeLat = null;
 let lastReverseGeocodeLon = null;
+let currentAddressLabel = "";
 
 let leafletMap = null;
 let leafletMarker = null;
+
+const PHOTO_UPDATE_INTERVAL_MS = 3000;
 
 els.clientId.value = `web-esp32-${Math.random().toString(16).slice(2, 8)}`;
 initCursorGlow();
@@ -64,13 +65,18 @@ function initMap() {
   }).addTo(leafletMap);
 
   const icon = L.divIcon({
-    className: "boat-marker",
-    html: `<div class="marker-pin"><span></span></div>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 34],
+    className: "user-location-marker",
+    html: `<div class="location-pulse"></div><div class="location-dot"></div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
   });
 
-  leafletMarker = L.marker([0, 0], { icon }).addTo(leafletMap);
+  leafletMarker = L.marker([0, 0], {
+    icon,
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 1000,
+  }).addTo(leafletMap);
   leafletMap.removeLayer(leafletMarker);
 }
 
@@ -107,7 +113,7 @@ function parseBrokerUrl(rawUrl) {
 
 function connectMqtt() {
   if (!window.Paho?.MQTT?.Client) {
-    setStatus("Libreria MQTT non caricata", "error");
+    setStatus("MQTT library not loaded", "error");
     return;
   }
 
@@ -169,17 +175,18 @@ function normalizePayload(rawPayload) {
     parsed = {};
   }
 
-  const acceleration = parsed.acceleration || parsed.acc || {};
+  const navigation = parsed.navigation || parsed.nav || {};
+  const position = parsed.gps || parsed.location || parsed.position || {};
   const photo = imageFromPayload(parsed, rawPayload);
   const address = addressFromPayload(parsed);
 
   return {
     temperature: numberFrom(parsed.temperature, parsed.temp, parsed.t),
-    accX: numberFrom(acceleration.x, parsed.accX, parsed.ax),
-    accY: numberFrom(acceleration.y, parsed.accY, parsed.ay),
-    accZ: numberFrom(acceleration.z, parsed.accZ, parsed.az),
-    latitude: numberFrom(parsed.latitude, parsed.lat),
-    longitude: numberFrom(parsed.longitude, parsed.lng, parsed.lon),
+    distance: numberFrom(navigation.distance, position.distance, parsed.distance, parsed.dist, parsed.d),
+    speed: numberFrom(navigation.speed, position.speed, parsed.speed, parsed.velocity, parsed.vel, parsed.v),
+    altitude: numberFrom(navigation.altitude, navigation.alt, position.altitude, position.alt, parsed.altitude, parsed.alt, parsed.elevation),
+    latitude: numberFrom(position.latitude, position.lat, parsed.latitude, parsed.lat),
+    longitude: numberFrom(position.longitude, position.lng, position.lon, parsed.longitude, parsed.lng, parsed.lon),
     address,
     photo: photo?.src || null,
     photoFormat: photo?.format || null,
@@ -201,9 +208,9 @@ function updateMetrics(data, receivedAt) {
     els.temperatureHint.textContent = temperatureHint(data.temperature);
   }
 
-  updateAxis(els.accX, els.barX, data.accX);
-  updateAxis(els.accY, els.barY, data.accY);
-  updateAxis(els.accZ, els.barZ, data.accZ);
+  updateTelemetryValue(els.distanceValue, data.distance, 1);
+  updateTelemetryValue(els.speedValue, data.speed, 1);
+  updateTelemetryValue(els.altitudeValue, data.altitude, 1);
 
   if (data.latitude !== null && data.longitude !== null) {
     els.latitudeValue.textContent = data.latitude.toFixed(6);
@@ -212,11 +219,16 @@ function updateMetrics(data, receivedAt) {
     els.mapsLink.href = `https://www.openstreetmap.org/?mlat=${data.latitude}&mlon=${data.longitude}#map=16/${data.latitude}/${data.longitude}`;
     els.mapsLink.classList.add("ready");
     moveMarker(data.latitude, data.longitude);
-    updateAddress(data.address || "Searching location...", data.address ? "" : "loading");
-    if (!data.address) scheduleReverseGeocode(data.latitude, data.longitude);
+
+    if (data.address) {
+      updateAddress(data.address);
+    } else {
+      if (!currentAddressLabel) updateAddress("Searching location...", "loading", false);
+      scheduleReverseGeocode(data.latitude, data.longitude);
+    }
   }
 
-  if (data.photo) {
+  if (data.photo && shouldUpdatePhoto(receivedAt)) {
     const photo = savePhoto(data.photo, data.photoFormat, receivedAt);
     showPhoto(photo);
     renderPhotoHistory();
@@ -225,10 +237,18 @@ function updateMetrics(data, receivedAt) {
   els.lastUpdate.textContent = receivedAt.toLocaleTimeString("en-GB");
 }
 
-function updateAddress(text, mode = "") {
+function updateAddress(text, mode = "", persist = true) {
   els.positionAddress.textContent = text;
   els.mapAddress.textContent = text;
   els.positionAddress.className = `address-value ${mode}`.trim();
+  if (persist) currentAddressLabel = text;
+}
+
+function shouldUpdatePhoto(receivedAt) {
+  const now = receivedAt.getTime();
+  if (now - lastPhotoUpdateAt < PHOTO_UPDATE_INTERVAL_MS) return false;
+  lastPhotoUpdateAt = now;
+  return true;
 }
 
 function addressFromPayload(parsed) {
@@ -245,14 +265,8 @@ function addressFromPayload(parsed) {
   return [streetLine, city, postcode].filter(Boolean).join(", ") || null;
 }
 
-// The address is only re-looked-up once the device has actually moved a
-// meaningful distance — not just because time passed. We still keep a
-// tiny safety floor (a couple of seconds) purely so GPS jitter can't fire
-// two requests back-to-back; it should never be noticeable in practice.
-// We also cancel any in-flight request before starting a new one so a
-// slow, stale response can never overwrite a newer result.
-const MIN_GEOCODE_DISTANCE_M = 10;
-const MIN_GEOCODE_SAFETY_FLOOR_MS = 2000;
+const MIN_GEOCODE_INTERVAL_MS = 12000;
+const MIN_GEOCODE_DISTANCE_M = 60;
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -262,6 +276,7 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
@@ -271,7 +286,9 @@ function scheduleReverseGeocode(latitude, longitude) {
   if (lastReverseGeocodeLat !== null) {
     const movedMeters = haversineMeters(lastReverseGeocodeLat, lastReverseGeocodeLon, latitude, longitude);
     const elapsed = now - lastReverseGeocodeAt;
-    if (movedMeters < MIN_GEOCODE_DISTANCE_M || elapsed < MIN_GEOCODE_SAFETY_FLOOR_MS) return;
+
+    if (currentAddressLabel && movedMeters < MIN_GEOCODE_DISTANCE_M) return;
+    if (elapsed < MIN_GEOCODE_INTERVAL_MS) return;
   }
 
   clearTimeout(reverseGeocodeTimer);
@@ -294,17 +311,23 @@ async function reverseGeocode(latitude, longitude) {
       lon: String(longitude),
       zoom: "18",
       addressdetails: "1",
-      "accept-language": "it",
+      "accept-language": "en",
     });
+
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, { signal });
     if (!response.ok) throw new Error("reverse geocoding failed");
 
     const result = await response.json();
     const label = formatReverseAddress(result.address, result.display_name);
-    updateAddress(label || "Location not found", label ? "" : "muted");
+
+    if (label) {
+      updateAddress(label);
+    } else if (!currentAddressLabel) {
+      updateAddress("Location not found", "muted", false);
+    }
   } catch (error) {
     if (error.name === "AbortError") return;
-    updateAddress("Location unavailable", "muted");
+    if (!currentAddressLabel) updateAddress("Location unavailable", "muted", false);
   }
 }
 
@@ -324,12 +347,14 @@ function savePhoto(src, format, receivedAt) {
   const photo = {
     id: crypto.randomUUID?.() || `${receivedAt.getTime()}-${Math.random().toString(16).slice(2)}`,
     src,
-    format: format || "Immagine",
+    format: format || "Image",
     receivedAt,
   };
+
   photoHistory.unshift(photo);
   photoHistory = photoHistory.slice(0, 24);
   selectedPhotoId = photo.id;
+
   return photo;
 }
 
@@ -344,6 +369,7 @@ function showPhoto(photo) {
 
 function renderPhotoHistory() {
   const count = photoHistory.length;
+
   els.photoCount.textContent = count === 0
     ? "No photos saved in memory"
     : `${count} ${count === 1 ? "photo saved" : "photos saved"} in memory`;
@@ -373,6 +399,7 @@ function renderPhotoHistory() {
 
 function imageFromPayload(parsed, rawPayload) {
   const camera = parsed.camera || {};
+
   const candidate = firstText(
     parsed.photo,
     parsed.image,
@@ -388,6 +415,7 @@ function imageFromPayload(parsed, rawPayload) {
   if (candidate) return normalizeImage(candidate);
 
   const raw = rawPayload.trim();
+
   if (/^data:image\//.test(raw) || looksLikeBase64Jpeg(raw)) {
     return normalizeImage(raw);
   }
@@ -405,7 +433,16 @@ function normalizeImage(value) {
     return { src: value, format };
   }
 
-  if (/^https?:\/\//.test(value) || /^blob:/.test(value)) {
+  if (/^https?:\/\//.test(value)) {
+    // HTTP/HTTPS image support.
+    // The cache-buster forces the browser to download the newest image
+    // even when the ESP32 camera reuses the same image URL.
+    const separator = value.includes("?") ? "&" : "?";
+    const cacheBuster = `t=${Date.now()}`;
+    return { src: `${value}${separator}${cacheBuster}`, format: "HTTP URL" };
+  }
+
+  if (/^blob:/.test(value)) {
     return { src: value, format: "URL" };
   }
 
@@ -441,6 +478,7 @@ function compactImageFields(value) {
 
   for (const key of Object.keys(value)) {
     const normalized = key.toLowerCase();
+
     if (["photo", "image", "frame", "jpeg", "jpg"].includes(normalized) && typeof value[key] === "string") {
       value[key] = `[image ${Math.round(value[key].length / 1024)} KB]`;
     } else {
@@ -455,14 +493,9 @@ function temperatureHint(value) {
   return "Value within operating range";
 }
 
-function updateAxis(label, bar, value) {
+function updateTelemetryValue(element, value, digits = 1) {
   if (value === null) return;
-
-  const clamped = Math.max(-2, Math.min(2, value));
-  const width = Math.abs(clamped) * 25;
-  label.textContent = value.toFixed(2);
-  bar.style.width = `${width}%`;
-  bar.style.left = clamped < 0 ? `${50 - width}%` : "50%";
+  element.textContent = value.toFixed(digits);
 }
 
 let hasCenteredMap = false;
@@ -476,6 +509,7 @@ function moveMarker(latitude, longitude) {
   if (!leafletMap.hasLayer(leafletMarker)) {
     leafletMarker.addTo(leafletMap);
   }
+
   leafletMarker.setLatLng(latLng);
 
   if (!hasCenteredMap) {
@@ -485,8 +519,6 @@ function moveMarker(latitude, longitude) {
     leafletMap.panTo(latLng);
   }
 
-  // Leaflet mounts into a card whose size can change after layout/resize;
-  // this keeps tile rendering correct if the container was resized.
   requestAnimationFrame(() => leafletMap.invalidateSize());
 }
 
@@ -498,21 +530,27 @@ function renderLog() {
 
   els.payloadTable.innerHTML = messages.map((message) => {
     const { data } = message;
+
     const temp = data.temperature === null ? "--" : `${data.temperature.toFixed(1)} °C`;
-    const acc = [data.accX, data.accY, data.accZ]
-      .map((value) => (value === null ? "--" : value.toFixed(2)))
-      .join(" / ");
+
+    const navigation = [
+      data.distance === null ? "--" : `${data.distance.toFixed(1)} m`,
+      data.speed === null ? "--" : `${data.speed.toFixed(1)} km/h`,
+      data.altitude === null ? "--" : `${data.altitude.toFixed(1)} m`,
+    ].join(" / ");
+
     const gps = data.latitude === null || data.longitude === null
       ? "--"
       : `${data.latitude.toFixed(5)}, ${data.longitude.toFixed(5)}`;
-    const photo = data.photo ? data.photoFormat || "si" : "--";
+
+    const photo = data.photo ? data.photoFormat || "yes" : "--";
 
     return `
       <tr>
         <td>${message.receivedAt.toLocaleTimeString("en-GB")}</td>
         <td>${escapeHtml(message.topic)}</td>
         <td>${temp}</td>
-        <td>${acc}</td>
+        <td>${navigation}</td>
         <td>${gps}</td>
         <td>${escapeHtml(photo)}</td>
         <td><code title="${escapeHtml(message.rawPayload)}">${escapeHtml(message.rawPayload)}</code></td>
@@ -534,13 +572,16 @@ window.addEventListener("resize", () => {
 });
 
 els.connectBtn.addEventListener("click", connectMqtt);
+
 els.clearLogBtn.addEventListener("click", () => {
   messages = [];
   renderLog();
 });
+
 els.clearPhotosBtn.addEventListener("click", () => {
   photoHistory = [];
   selectedPhotoId = null;
+  lastPhotoUpdateAt = 0;
   els.cameraImage.removeAttribute("src");
   els.cameraImage.classList.remove("ready");
   els.cameraEmpty.hidden = false;
@@ -548,6 +589,7 @@ els.clearPhotosBtn.addEventListener("click", () => {
   els.cameraFormat.textContent = "--";
   renderPhotoHistory();
 });
+
 els.photoStrip.addEventListener("click", (event) => {
   const button = event.target.closest("[data-photo-id]");
   if (!button) return;

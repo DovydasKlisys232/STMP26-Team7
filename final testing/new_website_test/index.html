@@ -26,7 +26,7 @@
         </span>
         <div>
           <h1>ESP32 Telemetry</h1>
-          <p>Temperature, acceleration and location via MQTT</p>
+          <p>Temperature, distance, speed and location via MQTT</p>
         </div>
       </div>
       <div class="project-name" aria-label="Project name">AcquaVision</div>
@@ -85,43 +85,34 @@
 
       <article class="metric-card">
         <div class="card-head">
-          <span class="icon-box accel">
+          <span class="icon-box telemetry">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v18" />
-              <path d="M3 12h18" />
-              <path d="m6 6 12 12" />
-              <path d="m18 6-12 12" />
+              <path d="M4 17h16" />
+              <path d="M7 17V9" />
+              <path d="M12 17V5" />
+              <path d="M17 17v-6" />
             </svg>
           </span>
           <div>
-            <h2>Acceleration</h2>
-            <p>X, Y, Z axes</p>
+            <h2>Navigation Data</h2>
+            <p>Distance, speed and altitude</p>
           </div>
         </div>
-        <div class="axis-list">
-          <div class="axis-row">
-            <span>X</span>
-            <div class="axis-track">
-              <div id="barX"></div>
-            </div>
-            <strong id="accX">--</strong>
+        <dl class="telemetry-list">
+          <div>
+            <dt>Distance</dt>
+            <dd><span id="distanceValue">--</span><small>m</small></dd>
           </div>
-          <div class="axis-row">
-            <span>Y</span>
-            <div class="axis-track">
-              <div id="barY"></div>
-            </div>
-            <strong id="accY">--</strong>
+          <div>
+            <dt>Speed</dt>
+            <dd><span id="speedValue">--</span><small>km/h</small></dd>
           </div>
-          <div class="axis-row">
-            <span>Z</span>
-            <div class="axis-track">
-              <div id="barZ"></div>
-            </div>
-            <strong id="accZ">--</strong>
+          <div>
+            <dt>Altitude</dt>
+            <dd><span id="altitudeValue">--</span><small>m</small></dd>
           </div>
-        </div>
-        <p class="hint">Values in g or m/s², depending on the ESP32 payload</p>
+        </dl>
+        <p class="hint">Latest navigation values from the ESP32 payload</p>
       </article>
 
       <article class="metric-card gps-card">
@@ -235,7 +226,7 @@
               <th>Time</th>
               <th>Topic</th>
               <th>Temperature</th>
-              <th>Acc.</th>
+              <th>Navigation</th>
               <th>GPS</th>
               <th>Photo</th>
               <th>Payload</th>

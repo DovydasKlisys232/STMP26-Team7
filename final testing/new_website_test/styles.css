@@ -316,7 +316,7 @@ button:focus-visible,
   background: #fff1df;
 }
 
-.icon-box.accel {
+.icon-box.telemetry {
   color: #4d5ca8;
   background: #eef0ff;
 }
@@ -367,56 +367,34 @@ button:focus-visible,
   transition: width 220ms ease;
 }
 
-.axis-list {
+.telemetry-list {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   margin-top: 8px;
 }
 
-.axis-row {
-  display: grid;
-  grid-template-columns: 22px 1fr 62px;
+.telemetry-list div {
+  display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfc;
 }
 
-.axis-row span {
-  color: #4d5a5d;
-  font-weight: 850;
+.telemetry-list dd {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 24px;
 }
 
-.axis-row strong {
-  text-align: right;
-  font: 800 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.axis-track {
-  position: relative;
-  height: 13px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #edf1f2;
-}
-
-.axis-track::before {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  content: "";
-  background: #cbd6d8;
-}
-
-.axis-track div {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 0;
-  border-radius: 999px;
-  background: #6375d8;
-  transition: left 180ms ease, width 180ms ease;
+.telemetry-list small {
+  color: var(--muted);
+  font: 800 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 .coord-list {
@@ -517,31 +495,49 @@ dd {
   display: none;
 }
 
-.leaflet-div-icon.boat-marker {
+.leaflet-div-icon.user-location-marker {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 34px !important;
-  height: 34px !important;
+  width: 36px !important;
+  height: 36px !important;
+  margin-left: -18px !important;
+  margin-top: -18px !important;
   background: transparent;
   border: 0;
 }
 
-.leaflet-div-icon.boat-marker .marker-pin {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 50% 50% 50% 0;
-  background: var(--accent);
-  box-shadow: 0 14px 26px rgba(16, 139, 131, 0.28);
-  transform: rotate(-45deg);
+.leaflet-div-icon.user-location-marker .location-pulse {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: rgba(26, 115, 232, 0.22);
+  animation: location-pulse 1.8s ease-out infinite;
 }
 
-.leaflet-div-icon.boat-marker .marker-pin span {
-  width: 11px;
-  height: 11px;
+.leaflet-div-icon.user-location-marker .location-dot {
+  position: relative;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: white;
+  border: 3px solid #ffffff;
+  background: #1a73e8;
+  box-shadow:
+    0 2px 8px rgba(26, 115, 232, 0.45),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes location-pulse {
+  0% {
+    opacity: 0.75;
+    transform: scale(0.55);
+  }
+
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
 }
 
 .leaflet-control-attribution {
