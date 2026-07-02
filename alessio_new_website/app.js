@@ -211,7 +211,10 @@ function updateMetrics(data, receivedAt) {
     els.mapsLink.href = `https://www.openstreetmap.org/?mlat=${data.latitude}&mlon=${data.longitude}#map=16/${data.latitude}/${data.longitude}`;
     els.mapsLink.classList.add("ready");
     moveMarker(data.latitude, data.longitude);
+<<<<<<< HEAD:alessio_new_website/app.js
 
+=======
+>>>>>>> d6dcfcdd253aaf1cf6ed7a58041a780b578af424:app.js
     if (data.address) {
       updateAddress(data.address);
     } else {
@@ -271,7 +274,10 @@ function scheduleReverseGeocode(latitude, longitude) {
   if (lastReverseGeocodeLat !== null) {
     const movedMeters = haversineMeters(lastReverseGeocodeLat, lastReverseGeocodeLon, latitude, longitude);
     const elapsed = now - lastReverseGeocodeAt;
+<<<<<<< HEAD:alessio_new_website/app.js
 
+=======
+>>>>>>> d6dcfcdd253aaf1cf6ed7a58041a780b578af424:app.js
     if (currentAddressLabel && movedMeters < MIN_GEOCODE_DISTANCE_M) return;
     if (elapsed < MIN_GEOCODE_INTERVAL_MS) return;
   }
@@ -304,7 +310,10 @@ async function reverseGeocode(latitude, longitude) {
 
     const result = await response.json();
     const label = formatReverseAddress(result.address, result.display_name);
+<<<<<<< HEAD:alessio_new_website/app.js
 
+=======
+>>>>>>> d6dcfcdd253aaf1cf6ed7a58041a780b578af424:app.js
     if (label) {
       updateAddress(label);
     } else if (!currentAddressLabel) {
