@@ -360,12 +360,36 @@ function savePhoto(src, format, receivedAt) {
 
 function showPhoto(photo) {
   selectedPhotoId = photo.id;
+
+  liveCameraUrl =
+    photo.src.split("?")[0];
+
   els.cameraImage.src = photo.src;
+
   els.cameraImage.classList.add("ready");
   els.cameraEmpty.hidden = true;
-  els.cameraTime.textContent = photo.receivedAt.toLocaleTimeString("en-GB");
-  els.cameraFormat.textContent = photo.format;
+
+  els.cameraTime.textContent =
+    photo.receivedAt.toLocaleTimeString("en-GB");
+
+  els.cameraFormat.textContent =
+    photo.format;
 }
+
+let liveCameraUrl = null;
+
+setInterval(() => {
+  if (!liveCameraUrl) return;
+
+  const separator =
+    liveCameraUrl.includes("?") ? "&" : "?";
+
+  els.cameraImage.src =
+    liveCameraUrl +
+    separator +
+    "t=" +
+    Date.now();
+}, 500);
 
 function renderPhotoHistory() {
   const count = photoHistory.length;

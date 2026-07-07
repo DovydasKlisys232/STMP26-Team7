@@ -69,7 +69,7 @@ double lastLat = 0.0;
 double lastLon = 0.0;
 
 unsigned long lastPublish = 0;
-const unsigned long publishInterval = 5000;
+const unsigned long publishInterval = 500;
 unsigned long lastMQTTReconnectAttempt = 0; 
 
 // =========================
@@ -106,8 +106,8 @@ void setup()
     if (psramFound())
     {
         Serial.println("PSRAM FOUND");
-        config.frame_size = FRAMESIZE_QVGA;
-        config.jpeg_quality = 15; 
+        config.frame_size = FRAMESIZE_SVGA;
+        config.jpeg_quality = 10; 
         config.fb_count = 2;
         config.grab_mode = CAMERA_GRAB_LATEST;
         config.fb_location = CAMERA_FB_IN_PSRAM;
@@ -115,8 +115,8 @@ void setup()
     else
     {
         Serial.println("PSRAM NOT FOUND");
-        config.frame_size = FRAMESIZE_QVGA;
-        config.jpeg_quality = 15;
+        config.frame_size = FRAMESIZE_SVGA;
+        config.jpeg_quality = 10;
         config.fb_count = 1;
         config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
         config.fb_location = CAMERA_FB_IN_DRAM;
@@ -137,6 +137,11 @@ void setup()
         {
             Serial.printf("Camera PID: 0x%02X\n", s->id.PID);
             s->set_brightness(s, 1);
+            s->set_brightness(s, 1);
+            s->set_contrast(s, 1);
+            s->set_saturation(s, 1);
+            s->set_sharpness(s, 2);
+            s->set_denoise(s, 1);
         }
     }
 
